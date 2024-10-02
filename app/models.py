@@ -5,7 +5,7 @@ import sqlalchemy as sa
 import sqlalchemy.orm as so
 from flask import current_app
 
-from app import db
+from app import db, login
 from app.utils.crypto_utils import decrypt_api_key, encrypt_api_key
 from app.utils.key_manager import load_private_key, load_public_key
 
@@ -36,6 +36,10 @@ class User(db.Model):
         if self.open_api_key_upbit:
             return decrypt_api_key(private_key, self.open_api_key_upbit).decode("utf-8")
         return None
+
+    @login.user_loader
+    def load_user(id):
+        return db.session.get(User, int(id))
 
     def __repr__(self):
         return f"<User {self.username}>"
