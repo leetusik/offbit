@@ -1,3 +1,4 @@
+import random
 from datetime import datetime, timedelta, timezone
 from hashlib import md5
 from typing import Optional
@@ -27,6 +28,10 @@ class User(UserMixin, db.Model):
     )
     password_hash: so.Mapped[Optional[str]] = so.mapped_column(sa.String(256))
     open_api_key_upbit: so.Mapped[Optional[bytes]] = so.mapped_column(sa.LargeBinary)
+    verification_code: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer)
+    verification_code_expiration: so.Mapped[Optional[datetime]] = so.mapped_column(
+        sa.DateTime
+    )
 
     def __repr__(self):
         return f"<User {self.username}>"
@@ -52,6 +57,16 @@ class User(UserMixin, db.Model):
         if self.open_api_key_upbit:
             return decrypt_api_key(private_key, self.open_api_key_upbit).decode("utf-8")
         return None
+
+    def generate_verification_code(self):
+        return random.randint(100000, 999999)
+
+    def set_verification_code(self):
+        self.verification_code = self.generate_verification_code()
+        self.verification_code_expiration = datetime.now(timezone.utc) + timedelta(
+            minutes=1
+        )
+        db.session.commit()
 
     @login.user_loader
     def load_user(id):
