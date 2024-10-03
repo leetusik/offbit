@@ -1,5 +1,5 @@
 from flask import Blueprint, flash, redirect, render_template, url_for
-from flask_login import current_user
+from flask_login import current_user, login_required
 
 from app import db
 from app.main import bp
@@ -8,10 +8,8 @@ from app.main import bp
 @bp.route("/")
 @bp.route("/index")
 def index():
-    user = {"username": "Sugang"}
     return render_template(
         "index.html",
-        user=user,
     )
 
 

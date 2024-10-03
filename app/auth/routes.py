@@ -68,6 +68,7 @@ def reset_password_request():
 
 
 # 무지성 삽입 공격 대응 해야함
+# 보안코드시간 만료 다시 보내기 구현
 @bp.route("/reset_password", methods=["GET", "POST"])
 def reset_password():
     if current_user.is_authenticated:
