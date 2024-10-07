@@ -19,3 +19,7 @@ class Config:
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME")
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
     ADMINS = ["leetusik@gmail.com", "swangle2100@gmail.com"]
+
+    # Add your default values here
+    MEMBERSHIP_DEFAULT_DURATION_DAYS = 30  # Default 30 days for membership
+    MEMBERSHIP_DEFAULT_EXTEND_DAYS = 30  # Default 30 days for membership extension

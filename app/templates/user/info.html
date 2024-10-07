@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="container my-5">
+        <!-- Welcome Box -->
+        <div class="row">
+            <div class="col-md-6">
+                <h1>
+                    {{ user.username }}님
+                    <br>
+                    환영합니다. 👋🏻
+                </h1>
+                <ul class="list-unstyled">
+                    <li>{{ user.mask_email() }}</li>
+                </ul>
+            </div>
+        </div>
+        <hr class="my-4">
+        <!-- Info Grid Box -->
+        <div class="row g-3 info-grid-box">
+            <div class="col-md-6 col-lg-3 d-flex">
+                <div class="card p-3 w-100">
+                    <div class="card-body">
+                        <h5 class="card-title">오프비트 멤버십</h5>
+                        {% if user.membership_type %}
+                            <p class="card-text">오프비트 멤버십 회원입니다.</p>
+                        {% else %}
+                            <p class="card-text">오프비트 멤버십에 가입하고 투자를 시작하세요.</p>
+                        {% endif %}
+                    </div>
+                    {% if user.membership_type %}
+                        <button class="btn btn-outline-secondary btn-sm">확인하기</button>
+                    {% else %}
+                        <button class="btn btn-outline-secondary btn-sm">가입하기</button>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-3 d-flex">
+                <div class="card p-3 w-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Open API Key(업비트)</h5>
+                        {% if user.open_api_key_upbit %}
+                            <p class="card-text">Open API Key가 연동되었습니다.</p>
+                            <p class="card-text">만료일: {{ user.open_api_key_expiration }}</p>
+                        {% else %}
+                            <p class="card-text">Open API Key를 연동해주세요.</p>
+                        {% endif %}
+                    </div>
+                    {% if user.open_api_key_upbit %}
+                        <button class="btn btn-outline-secondary btn-sm">해제하기</button>
+                    {% else %}
+                        <a href="{{ url_for("user.set_api_key") }}"
+                           class="btn btn-outline-secondary btn-sm">연동하기</a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-3 d-flex">
+                <div class="card p-3 w-100">
+                    <div class="card-body">
+                        <h5 class="card-title">비밀번호 재설정</h5>
+                        <p class="card-text">주기적인 비밀번호 재설정을 통해 개인정보를 안전하게 보호하세요.</p>
+                    </div>
+                    <a href="{{ url_for("user.user_reset_password") }}"
+                       class="btn btn-outline-secondary btn-sm">재설정하기</a>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-3 d-flex">
+                <div class="card p-3 w-100">
+                    <div class="card-body">
+                        <h5 class="card-title">프로모션 등 안내 수신</h5>
+                        <ul class="list-unstyled">
+                            <li>이메일: 동의</li>
+                            <li>문자: 동의</li>
+                        </ul>
+                    </div>
+                    <button class="btn btn-outline-secondary btn-sm">변경하기</button>
+                </div>
+            </div>
+        </div>
+        <!-- Leave Membership Text -->
+        <div class="text-center mt-5">
+            <p class="text-muted">
+                ※ 회원 탈퇴는 <a href="#" class="text-decoration-underline">여기</a>를 눌러주세요.
+            </p>
+        </div>
+    </div>
+{% endblock %}

@@ -18,12 +18,12 @@ class LoginForm(FlaskForm):
     email = StringField(
         "이메일",
         validators=[
-            DataRequired("이메일을 입력해 주세요"),
-            Email("유효한 이메일 형식이 아닙니다"),
+            DataRequired(message="이메일을 입력해 주세요"),
+            Email(message="유효한 이메일 형식이 아닙니다"),
         ],
     )
     password = PasswordField(
-        "비밀번호", validators=[DataRequired("비밀번호를 입력해 주세요")]
+        "비밀번호", validators=[DataRequired(message="비밀번호를 입력해 주세요")]
     )
     remember_me = BooleanField("로그인 유지하기")
     submit = SubmitField("로그인")

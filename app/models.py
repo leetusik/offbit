@@ -1,4 +1,5 @@
 import random
+import re
 from datetime import datetime, timedelta, timezone
 from hashlib import md5
 from typing import Optional
@@ -28,10 +29,16 @@ class User(UserMixin, db.Model):
     )
     password_hash: so.Mapped[Optional[str]] = so.mapped_column(sa.String(256))
     open_api_key_upbit: so.Mapped[Optional[bytes]] = so.mapped_column(sa.LargeBinary)
+    open_api_key_expiration: so.Mapped[Optional[datetime]] = so.mapped_column(
+        sa.DateTime
+    )
     verification_code: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer)
     verification_code_expiration: so.Mapped[Optional[datetime]] = so.mapped_column(
         sa.DateTime
     )
+    # Membership-related fields
+    membership_type: so.Mapped[Optional[str]] = so.mapped_column(sa.String(64))
+    membership_expiration: so.Mapped[Optional[datetime]] = so.mapped_column(sa.DateTime)
 
     def __repr__(self):
         return f"<User {self.username}>"
@@ -46,10 +53,11 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
-    def set_open_api_key(self, api_key: str):
+    def set_open_api_key(self, api_key: str, expiration_date):
         """Encrypt and store the Upbit API key."""
         public_key = load_public_key(current_app.config["PUBLIC_KEY_PATH"])
         self.open_api_key_upbit = encrypt_api_key(public_key, api_key)
+        self.open_api_key_expiration = expiration_date
 
     def get_open_api_key(self) -> str:
         """Decrypt and retrieve the Upbit API key."""
@@ -67,6 +75,43 @@ class User(UserMixin, db.Model):
             minutes=1
         )
         db.session.commit()
+
+    def set_membership(
+        self, membership_type: str = "basic", duration_days: Optional[int] = None
+    ):
+        """Sets membership type and expiration with optional duration."""
+        # Use default from config if no duration is provided
+        duration_days = (
+            duration_days or current_app.config["MEMBERSHIP_DEFAULT_DURATION_DAYS"]
+        )
+        self.membership_type = membership_type
+        self.membership_expiration = datetime.now(timezone.utc) + timedelta(
+            days=duration_days
+        )
+        db.session.commit()
+
+    def is_membership_active(self) -> bool:
+        """Returns True if membership is still active, False otherwise."""
+        if self.membership_expiration:
+            return self.membership_expiration > datetime.now(timezone.utc)
+        return False
+
+    def extend_membership(self, extra_days: Optional[int] = None):
+        """Extend the membership by a given number of days, default from config."""
+        extra_days = extra_days or current_app.config["MEMBERSHIP_DEFAULT_EXTEND_DAYS"]
+        if self.membership_expiration and self.is_membership_active():
+            self.membership_expiration += timedelta(days=extra_days)
+        else:
+            self.membership_expiration = datetime.now(timezone.utc) + timedelta(
+                days=extra_days
+            )
+        db.session.commit()
+
+    def mask_email(self):
+        """Mask the email address for privacy."""
+        email_pattern = r"(^[^@]{3})[^@]*(@.*$)"
+        masked_email = re.sub(email_pattern, r"\1***\2", self.email)
+        return masked_email
 
     @login.user_loader
     def load_user(id):

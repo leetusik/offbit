@@ -1,8 +1,11 @@
+import sqlalchemy as sa
+import sqlalchemy.orm as so
 from flask import Blueprint, flash, redirect, render_template, url_for
 from flask_login import current_user, login_required
 
 from app import db
 from app.main import bp
+from app.models import User
 
 
 @bp.route("/")
@@ -30,9 +33,4 @@ def notice():
 
 @bp.route("/faq")
 def faq():
-    pass
-
-
-@bp.route("/user")
-def user():
     pass

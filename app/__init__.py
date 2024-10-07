@@ -42,6 +42,10 @@ def create_app(config_class=Config):
 
     app.register_blueprint(auth_bp, url_prefix="/auth")
 
+    from app.user import bp as user_bp
+
+    app.register_blueprint(user_bp, url_prefix="/my")
+
     if not app.debug and not app.testing:
         if app.config["MAIL_SERVER"]:
             auth = None
@@ -81,6 +85,7 @@ def create_app(config_class=Config):
 
         app.logger.setLevel(logging.INFO)
         app.logger.info("Offbit startup")
+        # current_app.logger.debug("Debug level log message")
 
     return app
 
