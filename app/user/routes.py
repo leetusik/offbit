@@ -48,3 +48,13 @@ def set_api_key():
             flash("API가 성공적으로 연동되었습니다.")
         return redirect(url_for("user.user_info"))
     return render_template("user/set_api_key.html", form=form)
+
+
+@bp.route("/dashboard")
+@login_required
+def dashboard():
+    title = "대시보드"
+    return render_template(
+        "user/dashboard.html",
+        title=title,
+    )

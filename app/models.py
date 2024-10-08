@@ -40,6 +40,12 @@ class User(UserMixin, db.Model):
     membership_type: so.Mapped[Optional[str]] = so.mapped_column(sa.String(64))
     membership_expiration: so.Mapped[Optional[datetime]] = so.mapped_column(sa.DateTime)
 
+    strategies: so.Mapped["UserStrategy"] = so.relationship(
+        "UserStrategy",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
     def __repr__(self):
         return f"<User {self.username}>"
 
@@ -116,3 +122,88 @@ class User(UserMixin, db.Model):
     @login.user_loader
     def load_user(id):
         return db.session.get(User, int(id))
+
+
+class Strategy(db.Model):
+    id: so.Mapped[int] = so.mapped_column(primary_key=True)
+    name: so.Mapped[str] = so.mapped_column(
+        sa.String(64),
+        index=True,
+        unique=False,
+    )
+    description: so.Mapped[Optional[str]] = so.mapped_column(
+        sa.String(255),
+        nullable=True,
+    )
+    # Many-to-many relationship via UserStrategy
+    users: so.Mapped["UserStrategy"] = so.relationship(
+        "UserStrategy",
+        back_populates="strategy",
+        cascade="all, delete-orphan",
+    )
+
+    def execute_logic_for_user(self, user):
+        """The core strategy logic, executed for a specific user."""
+        current_app.logger.info(
+            f"Executing logic of {self.name} for user {user.username}"
+        )
+
+        # # Example of core logic: a trend-following strategy
+        # if self.name == "Trend Following":
+        #     # Example logic for buying/selling based on some conditions
+        #     market_trend = get_current_market_trend()  # Pseudo-function to get market data
+        #     if market_trend == "upward":
+        #         print(f"{user.username} buys due to upward trend.")
+        #         place_buy_order(user)
+        #     elif market_trend == "downward":
+        #         print(f"{user.username} sells due to downward trend.")
+        #         place_sell_order(user)
+
+    def __repr__(self):
+        return f"<Strategy {self.name}>"
+
+
+class UserStrategy(db.Model):
+    id: so.Mapped[int] = so.mapped_column(primary_key=True)
+    user_id: so.Mapped[int] = so.mapped_column(
+        sa.ForeignKey("user.id"),
+        nullable=False,
+    )
+    strategy_id: so.Mapped[int] = so.mapped_column(
+        sa.ForeignKey("strategy.id"),
+        nullable=False,
+    )
+    active: so.Mapped[bool] = so.mapped_column(
+        sa.Boolean,
+        default=False,
+        nullable=False,
+    )
+
+    execution_time: so.Mapped[Optional[datetime]] = so.mapped_column(
+        sa.DateTime, nullable=True
+    )
+
+    # Relationships
+    user: so.Mapped["User"] = so.relationship(
+        "User",
+        back_populates="strategies",
+    )
+    strategy: so.Mapped["Strategy"] = so.relationship(
+        "Strategy",
+        back_populates="users",
+    )
+
+    def execute(self):
+        """Execute the strategy for the specific user with execution_time logic."""
+        if self.execution_time:
+            print(
+                f"Executing {self.strategy.name} for {self.user.username} at {self.execution_time}"
+            )
+        else:
+            print(f"Executing {self.strategy.name} for {self.user.username} now")
+
+        # Call the core strategy logic and apply it to the user
+        self.strategy.execute_logic_for_user(self.user)
+
+    def __repr__(self):
+        return f"<UserStrategy user_id={self.user_id}, strategy_id={self.strategy_id}>"

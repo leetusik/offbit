@@ -81,6 +81,11 @@
                             <li class="nav-item">
                                 <a class="nav-link"
                                    aria-current="page"
+                                   href="{{ url_for("user.dashboard") }}">대시보드</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link"
+                                   aria-current="page"
                                    href="{{ url_for("auth.logout") }}">로그아웃</a>
                             </li>
                         {% endif %}
