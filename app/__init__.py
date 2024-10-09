@@ -9,6 +9,7 @@ from flask_migrate import Migrate
 from flask_moment import Moment
 from flask_sqlalchemy import SQLAlchemy
 
+from app.celery import make_celery
 from config import Config
 
 db = SQLAlchemy()
@@ -28,6 +29,7 @@ def create_app(config_class=Config):
     login.init_app(app)
     mail.init_app(app)
     moment.init_app(app)
+    celery = make_celery(app)
 
     # Register routes and models
     from app.errors import bp as errors_bp

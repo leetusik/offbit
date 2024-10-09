@@ -46,7 +46,8 @@ class SetAPIKey(FlaskForm):
         default="upbit",
         validators=[DataRequired()],
     )
-    api_key = StringField("API Key", validators=[DataRequired()])
+    api_key_access = StringField("API Key Access", validators=[DataRequired()])
+    api_key_secret = StringField("API Key Secret", validators=[DataRequired()])
     # Use DateTimeLocalField from wtforms.fields
     expiration = DateTimeLocalField(
         "API Key Expiration",

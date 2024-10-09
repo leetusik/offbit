@@ -37,10 +37,15 @@ def set_api_key():
     if form.validate_on_submit():
         upbit_selected = form.platform.data == "upbit"
         if upbit_selected:
-            api_key = form.api_key.data
+            api_key_access = form.api_key_access.data
+            api_key_secret = form.api_key_secret.data
             expiration_date = form.expiration.data
             # Update the current user's API key and expiration date
-            current_user.set_open_api_key(api_key, expiration_date)
+            current_user.set_open_api_key(
+                api_key_access=api_key_access,
+                api_key_secret=api_key_secret,
+                expiration_date=expiration_date,
+            )
 
             # Save changes to the database
             db.session.commit()
