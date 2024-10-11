@@ -2,5 +2,14 @@
 {% block content %}
     <h1>대시보드</h1>
     <h2>내 전략</h2>
+    {% for user_strategy in user_strategies %}
+        <p>{{ user_strategy.strategy.name }}</p>
+        <a href="{{ url_for("user.set_strategy", name=user_strategy.strategy.name) }}">투자 세팅하기</a>
+        {% if user_strategy.investing_limit != 0 and user_strategy.execution_time != None %}
+            <p>투자 시작하기</p>
+        {% else %}
+            <p>투자를 시작하기 위해서는 전략 투자금과 전략 실행 시간 설정을 완료해야합니다!</p>
+        {% endif %}
+    {% endfor %}
     <h2>전략 실행</h2>
 {% endblock %}

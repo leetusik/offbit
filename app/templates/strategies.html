@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>전략랭킹</h1>
+    <a href="{{ url_for("main.make_strategy") }}">전략 만들기</a>
+    {% for strategy in strategies %}
+        <p>{{ strategy.name }}</p>
+        {% if current_user.is_authenticated and not current_user.is_my_strategy(strategy) %}
+            <p>
+                <form action="{{ url_for("main.to_my_strategies", name=strategy.name) }}"
+                      method="post">
+                    {{ form.hidden_tag() }}
+                    {{ form.submit(value="내 전략에 추가하기", class_="btn btn-primary") }}
+                </form>
+            </p>
+        {% else %}
+            <p>already in my strategies</p>
+        {% endif %}
+    {% endfor %}
+{% endblock %}

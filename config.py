@@ -20,6 +20,10 @@ class Config:
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
     ADMINS = ["leetusik@gmail.com", "swangle2100@gmail.com"]
 
+    # Celery Configuration
+    CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL")
+    CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND")
+
     # Add your default values here
     MEMBERSHIP_DEFAULT_DURATION_DAYS = 30  # Default 30 days for membership
     MEMBERSHIP_DEFAULT_EXTEND_DAYS = 30  # Default 30 days for membership extension

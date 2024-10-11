@@ -12,7 +12,8 @@ import sqlalchemy as sa
 import sqlalchemy.orm as so
 from flask import current_app
 from flask_login import UserMixin
-from sqlalchemy import Enum
+
+# from sqlalchemy import Enum
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app import db, login
@@ -58,8 +59,8 @@ class User(UserMixin, db.Model):
     )
     # Membership-related fields
     # Use Enum for membership type
-    membership_type: sa.Mapped[Optional[MembershipType]] = sa.mapped_column(
-        Enum(MembershipType), nullable=False, default=MembershipType.BIKE
+    membership_type: so.Mapped[Optional[MembershipType]] = so.mapped_column(
+        sa.Enum(MembershipType), nullable=False, default=MembershipType.BIKE
     )
     membership_expiration: so.Mapped[Optional[datetime]] = so.mapped_column(sa.DateTime)
     # Add available balance field
@@ -69,19 +70,20 @@ class User(UserMixin, db.Model):
         "UserStrategy",
         back_populates="user",
         cascade="all, delete-orphan",
+        lazy="select",  # Ensure this returns a list of UserStrategy objects
     )
 
     # Add a property to return the upper limit based on membership type
     @property
     def upper_limit(self):
         if self.membership_type == MembershipType.BIKE:
-            return 10
+            return 100000
         elif self.membership_type == MembershipType.MOTORCYCLE:
-            return 100
+            return 1000000
         elif self.membership_type == MembershipType.CAR:
-            return 1000
+            return 10000000
         elif self.membership_type == MembershipType.AIRPLANE:
-            return 10000
+            return 100000000
         return 0  # Default, if needed
 
     # Method to update available balance based on strategies
@@ -110,14 +112,14 @@ class User(UserMixin, db.Model):
     ):
         """Encrypt and store the Upbit API key."""
         public_key = load_public_key(current_app.config["PUBLIC_KEY_PATH"])
-        self.open_api_key_upbit_access = encrypt_api_key(public_key, api_key_access)
-        self.open_api_key_upbit_secret = encrypt_api_key(public_key, api_key_secret)
+        self.open_api_key_access_upbit = encrypt_api_key(public_key, api_key_access)
+        self.open_api_key_secret_upbit = encrypt_api_key(public_key, api_key_secret)
         self.open_api_key_expiration = expiration_date
 
     def get_open_api_key(self) -> str:
         """Decrypt and retrieve the Upbit API key."""
         private_key = load_private_key(current_app.config["PRIVATE_KEY_PATH"])
-        if self.open_api_key_upbit:
+        if self.open_api_key_access_upbit and self.open_api_key_secret_upbit:
             return (
                 decrypt_api_key(private_key, self.open_api_key_upbit_access).decode(
                     "utf-8"
@@ -180,6 +182,17 @@ class User(UserMixin, db.Model):
         api_key_access, api_key_secret = self.get_open_api_key()
         return pyupbit.Upbit(access=api_key_access, secret=api_key_secret)
 
+    def is_my_strategy(self, strategy):
+        return (
+            db.session.scalar(
+                sa.select(UserStrategy).where(
+                    UserStrategy.user_id == self.id,
+                    UserStrategy.strategy_id == strategy.id,
+                )
+            )
+            is not None
+        )
+
     @login.user_loader
     def load_user(id):
         return db.session.get(User, int(id))
@@ -190,7 +203,7 @@ class Strategy(db.Model):
     name: so.Mapped[str] = so.mapped_column(
         sa.String(64),
         index=True,
-        unique=False,
+        unique=True,
     )
     description: so.Mapped[Optional[str]] = so.mapped_column(
         sa.String(255),
@@ -374,8 +387,8 @@ class UserStrategy(db.Model):
         nullable=False,
     )
 
-    execution_time: so.Mapped[Optional[datetime]] = so.mapped_column(
-        sa.DateTime, nullable=True
+    execution_time: so.Mapped[Optional[datetime.time]] = so.mapped_column(
+        sa.Time, nullable=True
     )
 
     # Relationships
@@ -417,7 +430,7 @@ class UserStrategy(db.Model):
         # Use df_utils to convert DataFrame to pickle format
         self.historical_data_resampled = save_dataframe_as_pickle(df)
         db.session.commit()
-        print(f"Historical data successfully saved to strategy {self.name}.")
+        print(f"Historical data successfully saved to strategy {self.strategy.name}.")
 
     def get_historical_data_resampled(self) -> pd.DataFrame:
         """Retrieve the historical data as a DataFrame."""
@@ -426,7 +439,7 @@ class UserStrategy(db.Model):
             df = get_dataframe_from_pickle(self.historical_data_resampled)
             return df
         else:
-            print(f"No historical data available for strategy {self.name}.")
+            print(f"No historical data available for strategy {self.strategy.name}.")
             return None
 
     @property
@@ -436,16 +449,18 @@ class UserStrategy(db.Model):
 
     @investing_limit.setter
     def investing_limit(self, value):
-        # Check if the new investing limit exceeds the user's available balance
-        if value > self.user.available:
-            raise ValueError(
-                f"Investing limit {value} exceeds user's available balance of {self.user.available}"
-            )
-        # Set the private _investing_limit if the value is valid
+        # Allow setting any value, even if it exceeds available balance
         self._investing_limit = value
-        # Update user's available balance
-        self.user.available -= value
+        # No validation for now, commit changes directly
         db.session.commit()
+
+    def check_investing_limit(self):
+        # Check if the new investing limit exceeds the user's available balance
+        if self.investing_limit > self.user.available:
+            raise ValueError(
+                f"Investing limit {self.investing_limit} exceeds user's available balance of {self.user.available}"
+            )
+        return True
 
     def execute(self):
         """Execute the strategy for the specific user at the configured execution time."""
@@ -470,10 +485,12 @@ class UserStrategy(db.Model):
         )
 
         self.execution_time = time_obj
+        print(time_obj)
+        print(self.execution_time)
         db.session.commit()
 
     def activate(self):
-        """Deactivate a strategy and update the user's available balance."""
+        """activate a strategy and update the user's available balance."""
         self.active = True
         db.session.commit()
         # Recalculate the user's available balance

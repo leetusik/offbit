@@ -1,8 +1,17 @@
+from datetime import datetime
+
 import sqlalchemy as sa
 from flask_login import current_user
 from flask_wtf import FlaskForm
-from wtforms import BooleanField, PasswordField, SelectField, StringField, SubmitField
-from wtforms.fields import DateTimeLocalField
+from wtforms import (
+    BooleanField,
+    IntegerField,
+    PasswordField,
+    SelectField,
+    StringField,
+    SubmitField,
+)
+from wtforms.fields import DateTimeLocalField, TimeField
 from wtforms.validators import (
     DataRequired,
     Email,
@@ -39,7 +48,7 @@ class UserResetPasswordForm(FlaskForm):
 
 
 # api_key validate feature add later.
-class SetAPIKey(FlaskForm):
+class SetAPIKeyForm(FlaskForm):
     platform = SelectField(
         "Platform",
         choices=[("upbit", "Upbit"), ("bithumb", "Bithumb")],
@@ -56,3 +65,13 @@ class SetAPIKey(FlaskForm):
     )
 
     submit = SubmitField("Submit")
+
+
+class SetUserStrategyForm(FlaskForm):
+    investing_limit = IntegerField("전략 투자금 한도", validators=[DataRequired()])
+    execution_time = TimeField(
+        "투자 기준 시간",
+        # format="%H:%M:%S",  # This ensures input is in HH:MM:SS format
+        validators=[DataRequired(message="Execution time is required")],
+    )
+    submit = SubmitField("Set Strategy")

@@ -3,9 +3,9 @@ from flask import flash, redirect, render_template, url_for
 from flask_login import current_user, login_required, logout_user
 
 from app import db
-from app.models import User
+from app.models import User, UserStrategy
 from app.user import bp
-from app.user.forms import SetAPIKey, UserResetPasswordForm
+from app.user.forms import SetAPIKeyForm, SetUserStrategyForm, UserResetPasswordForm
 
 # from app.user.forms import
 
@@ -58,8 +58,33 @@ def set_api_key():
 @bp.route("/dashboard")
 @login_required
 def dashboard():
-    title = "대시보드"
+    user_strategies = db.session.scalars(
+        sa.select(UserStrategy).where(UserStrategy.user_id == current_user.id)
+    )
     return render_template(
         "user/dashboard.html",
-        title=title,
+        title="대시보드",
+        user_strategies=user_strategies,
+    )
+
+
+@bp.route("/set_strategy/<name>", methods=["GET", "POST"])
+@login_required
+def set_strategy(name):
+    user_strategy = db.first_or_404(
+        sa.select(UserStrategy).where(UserStrategy.strategy.has(name=name))
+    )
+    form = SetUserStrategyForm()
+    if form.validate_on_submit():
+        investing_limit = form.investing_limit.data
+        execution_time = str(form.execution_time.data)
+        # print(execution_time)
+        user_strategy.investing_limit = investing_limit
+        user_strategy.set_execution_time(execution_time)
+        flash(f"{user_strategy.strategy.name} 전략 투자 설정이 완료되었습니다.")
+        return redirect(url_for("user.dashboard"))
+    return render_template(
+        "user/set_strategy.html",
+        title="전략별 투자 설정",
+        form=form,
     )

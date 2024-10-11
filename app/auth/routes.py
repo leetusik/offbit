@@ -44,6 +44,7 @@ def register():
     if form.validate_on_submit():
         user = User(username=form.username.data, email=form.email.data)
         user.set_password(form.password.data)
+        user.update_available()
         db.session.add(user)
         db.session.commit()
         flash("축하합니다, 가입에 성공했습니다!")

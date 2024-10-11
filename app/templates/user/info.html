@@ -38,7 +38,7 @@
                 <div class="card p-3 w-100">
                     <div class="card-body">
                         <h5 class="card-title">Open API Key(업비트)</h5>
-                        {% if user.open_api_key_upbit %}
+                        {% if user.open_api_key_access_upbit and user.open_api_key_secret_upbit %}
                             <p class="card-text">Open API Key가 연동되었습니다.</p>
                             <p class="card-text">만료일: {{ user.open_api_key_expiration }}</p>
                         {% else %}

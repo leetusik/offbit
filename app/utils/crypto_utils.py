@@ -11,6 +11,7 @@ def encrypt_api_key(public_key, api_key: str) -> bytes:
             label=None,
         ),
     )
+    print(encrypted_api_key)
     return encrypted_api_key
 
 

@@ -175,18 +175,18 @@ def concat_candles(long_df, short_df):
 #     )
 
 
-# """Sets the execution time based on a provided time string in hh:mm:ss format."""
-# # Parse the string and store it as a timezone-aware datetime in UTC
-time_format = "%H:%M:%S"
-# time_obj = datetime.strptime("04:12:00", time_format).time()
-# now_time = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None).time()
-time_obj = (
-    datetime.strptime("04:12:00", time_format)
-    .replace(microsecond=0, tzinfo=None)
-    .time()
-)
+# # """Sets the execution time based on a provided time string in hh:mm:ss format."""
+# # # Parse the string and store it as a timezone-aware datetime in UTC
+# time_format = "%H:%M:%S"
+# # time_obj = datetime.strptime("04:12:00", time_format).time()
+# # now_time = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None).time()
+# time_obj = (
+#     datetime.strptime("04:12:00", time_format)
+#     .replace(microsecond=0, tzinfo=None)
+#     .time()
+# )
 
-# # Combine current date with the provided time and store it as a UTC-aware datetime
-# execution_datetime = datetime.combine(now.date(), time_obj).astimezone(timezone.utc)
-# execution_datetime = execution_datetime.replace(tzinfo=None)
-print(time_obj.minute)
+# # # Combine current date with the provided time and store it as a UTC-aware datetime
+# # execution_datetime = datetime.combine(now.date(), time_obj).astimezone(timezone.utc)
+# # execution_datetime = execution_datetime.replace(tzinfo=None)
+# print(time_obj.minute)
