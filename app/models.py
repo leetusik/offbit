@@ -1,10 +1,12 @@
 import enum
 import random
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from hashlib import md5
 from typing import Optional
 
+import pandas as pd
 import pyupbit
 import sqlalchemy as sa
 import sqlalchemy.orm as so
@@ -15,6 +17,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from app import db, login
 from app.utils.crypto_utils import decrypt_api_key, encrypt_api_key
+from app.utils.df_utils import get_dataframe_from_pickle, save_dataframe_as_pickle
+from app.utils.handle_candle import concat_candles, get_candles
 from app.utils.key_manager import load_private_key, load_public_key
 from app.utils.trading_conditions import get_condition
 
@@ -192,6 +196,18 @@ class Strategy(db.Model):
         sa.String(255),
         nullable=True,
     )
+    # Field to store pickled DataFrame data
+    historical_data: so.Mapped[Optional[bytes]] = so.mapped_column(
+        sa.LargeBinary,
+        nullable=True,
+    )
+
+    # Field to store pickled DataFrame data
+    short_historical_data: so.Mapped[Optional[bytes]] = so.mapped_column(
+        sa.LargeBinary,
+        nullable=True,
+    )
+
     # Many-to-many relationship via UserStrategy
     users: so.Mapped["UserStrategy"] = so.relationship(
         "UserStrategy",
@@ -199,53 +215,129 @@ class Strategy(db.Model):
         cascade="all, delete-orphan",
     )
 
+    def save_historical_data(self, df: pd.DataFrame):
+        """Save the historical data as binary pickle data."""
+        # Use df_utils to convert DataFrame to pickle format
+        self.historical_data = save_dataframe_as_pickle(df)
+        self.short_historical_data = save_dataframe_as_pickle(df.tail(28000))
+        db.session.commit()
+        print(f"Historical data successfully saved to strategy {self.name}.")
+
+    def get_historical_data(self) -> pd.DataFrame:
+        """Retrieve the historical data as a DataFrame."""
+        if self.historical_data:
+            # Use df_utils to convert binary pickle data back to a DataFrame
+            df = get_dataframe_from_pickle(self.historical_data)
+            return df
+        else:
+            print(f"No historical data available for strategy {self.name}.")
+            return None
+
+    def get_short_historical_data(self) -> pd.DataFrame:
+        """Retrieve the historical data as a DataFrame."""
+        if self.short_historical_data:
+            # Use df_utils to convert binary pickle data back to a DataFrame
+            df = get_dataframe_from_pickle(self.short_historical_data)
+            return df
+        else:
+            print(f"No historical data available for strategy {self.name}.")
+            return None
+
+    def make_historical_data(self):
+        if not self.historical_data:
+            # get historical data from the 2021/04/01 every minutes
+            long_df = get_candles()
+        else:
+            long_df = get_dataframe_from_pickle(self.historical_data)
+
+        now_minus_320 = datetime.now(timezone.utc) - timedelta(hours=3, minutes=20)
+        now_minus_320 = now_minus_320.strftime("%Y-%m-%d %H:%M:%S")
+        short_df = get_candles(start=now_minus_320)
+        final_df = concat_candles(long_df=long_df, short_df=short_df)
+
+        # add feature if final_df(concated df) has a time gap a lot.
+
+        self.save_historical_data(final_df)
+        pass
+
     def execute_logic_for_user(self, user_strategy):
         """The core strategy logic, executed for a specific user."""
+        # check if the historical data is updated.
+        while True:
+            # Assuming formatted_now is a datetime object without seconds (formatted_now = datetime.now().replace(second=0, microsecond=0))
+            formatted_now = datetime.now(timezone.utc).replace(
+                second=0, microsecond=0
+            )  # Convert formatted_now to naive if it has timezone info
+            formatted_now_naive = formatted_now.replace(tzinfo=None)
+
+            short_historical_data = self.get_short_historical_data()
+            # Get the last row of the DataFrame
+            last_row = short_historical_data.iloc[-1]
+
+            # Convert the 'time_utc' column value from the last row to a datetime object
+            last_time_utc = pd.to_datetime(last_row["time_utc"])
+
+            # Compare the two naive datetime objects
+            if last_time_utc == formatted_now_naive:
+                break
+            else:
+                time.sleep(0.1)
+                current_app.logger.info(
+                    f"User: {user_strategy.user.username}, no historical data updated. try again."
+                )
+
         try:
             upbit = user_strategy.user.create_upbit_client()
             # Fetch the initial balance to check for unexpected changes
             if user_strategy.holding_position:
                 coin_balance: float = upbit.get_balance("KRW-BTC")
-                sell_needed: float = user_strategy.sell_needed
-                if coin_balance < sell_needed:
-                    send_email(
-                        "[Offibit] No sufficient coin is there to automated trading",
-                        user_strategy.user,
-                    )
-                    user_strategy.deactivate()
-                    return  # Stop execution if there's an unexpected balance change
+                sell_needed: float = min(coin_balance, user_strategy.sell_needed)
+                # if coin_balance < sell_needed:
+                #     send_email(
+                #         "[Offibit] No sufficient coin is there to automated trading",
+                #         user_strategy.user,
+                #     )
+                #     user_strategy.deactivate()
+                #     return  # Stop execution if there's an unexpected balance change
             else:
                 krw_balance: float = upbit.get_balance()
-                buy_needed: float = user_strategy.investing_limit
-                if krw_balance < buy_needed:
-                    send_email(
-                        "[Offibit] No sufficient krw is there to automated trading",
-                        user_strategy.user,
-                    )
-                    user_strategy.deactivate()
-                    return  # Stop execution if there's an unexpected balance change
+                buy_needed: float = min(
+                    krw_balance * 0.9995, user_strategy.investing_limit
+                )
 
             # Buy & sell condition check and execute order
             condition = get_condition(
                 self.name,
                 user_strategy.execution_time,
                 user_strategy.holding_position,
+                short_historical_data,
             )  # Pseudo-function to get the buy/sell signal
 
             if condition == "buy":
-                user_strategy.user.buy()  # Pseudo-function for placing a buy order
+                buy = upbit.buy_market_order("KRW-BTC", buy_needed)
+                # get order data
+                order = upbit.get_order(buy["uuid"])
+                trades = order.get("trades")
+                while not trades:
+                    time.sleep(1)
+                    order = upbit.get_order(buy["uuid"])
+                    trades = order.get("trades")
+                buy_krw = float(order["price"])
+                fee = float(order["reserved_fee"])
+                executed_volume = float(order["executed_volume"])
+                # buy_price = round((buy_krw + fee) / executed_volume)
+
+                user_strategy.sell_needed = executed_volume
+                user_strategy.holding_position = True
+                db.session.commit()
+
             elif condition == "sell":
-                user_strategy.user.sell()  # Pseudo-function for placing a sell order
+                sell = upbit.sell_market_order("KRW-BTC", sell_needed)
+                user_strategy.holding_position = False
+                db.session.commit()
 
-            # Fetch the balance again after the order to update the user's balance
-            updated_balance = get_balance()
-
-            # Update user strategy's balance after executing the trade
-            user_strategy.balance = updated_balance
-
-            # Save order and condition data
-            save_order_data()  # Pseudo-function to save order data
-            save_condition_data()  # Pseudo-function to save condition data
+            # # Save data
+            # save_data()
 
             # Commit the changes after all updates
             db.session.commit()
@@ -314,6 +406,28 @@ class UserStrategy(db.Model):
         default=0,
         nullable=False,
     )
+    # Field to store pickled DataFrame data
+    historical_data_resampled: so.Mapped[bytes] = so.mapped_column(
+        sa.LargeBinary,
+        nullable=True,
+    )
+
+    def save_historical_data_resampled(self, df: pd.DataFrame):
+        """Save the historical data as binary pickle data."""
+        # Use df_utils to convert DataFrame to pickle format
+        self.historical_data_resampled = save_dataframe_as_pickle(df)
+        db.session.commit()
+        print(f"Historical data successfully saved to strategy {self.name}.")
+
+    def get_historical_data_resampled(self) -> pd.DataFrame:
+        """Retrieve the historical data as a DataFrame."""
+        if self.historical_data_resampled:
+            # Use df_utils to convert binary pickle data back to a DataFrame
+            df = get_dataframe_from_pickle(self.historical_data_resampled)
+            return df
+        else:
+            print(f"No historical data available for strategy {self.name}.")
+            return None
 
     @property
     def investing_limit(self):
@@ -349,14 +463,13 @@ class UserStrategy(db.Model):
         """Sets the execution time based on a provided time string in hh:mm:ss format."""
         # Parse the string and store it as a timezone-aware datetime in UTC
         time_format = "%H:%M:%S"
-        time_obj = datetime.strptime(time_str, time_format).time()
-        now = datetime.now(timezone.utc).replace(microsecond=0)
-
-        # Combine current date with the provided time and store it as a UTC-aware datetime
-        execution_datetime = datetime.combine(now.date(), time_obj).astimezone(
-            timezone.utc
+        time_obj = (
+            datetime.strptime(time_str, time_format)
+            .replace(microsecond=0, tzinfo=None)
+            .time()
         )
-        self.execution_time = execution_datetime
+
+        self.execution_time = time_obj
         db.session.commit()
 
     def activate(self):

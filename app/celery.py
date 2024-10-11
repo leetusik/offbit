@@ -16,8 +16,12 @@ def make_celery(app):
                 return self.run(*args, **kwargs)
 
     celery.Task = ContextTask
-    # Add periodic task for strategy execution
+    # Add periodic tasks for strategy execution and historical data updates
     celery.conf.beat_schedule = {
+        "update-strategies-historical-data-daily": {
+            "task": "app.tasks.update_strategies_historical_data",
+            "schedule": crontab(minute="*"),  # Run every minute
+        },
         "execute-strategies-every-minute": {
             "task": "app.tasks.execute_strategies",
             "schedule": crontab(minute="*"),  # Run every minute
