@@ -5,7 +5,12 @@ from flask_login import current_user, login_required, logout_user
 from app import db
 from app.models import User, UserStrategy
 from app.user import bp
-from app.user.forms import SetAPIKeyForm, SetUserStrategyForm, UserResetPasswordForm
+from app.user.forms import (
+    SetAPIKeyForm,
+    SetUserStrategyForm,
+    StartUserStrategyForm,
+    UserResetPasswordForm,
+)
 
 # from app.user.forms import
 
@@ -33,7 +38,7 @@ def user_reset_password():
 @bp.route("/set_api_key", methods=["GET", "POST"])
 @login_required
 def set_api_key():
-    form = SetAPIKey()
+    form = SetAPIKeyForm()
     if form.validate_on_submit():
         upbit_selected = form.platform.data == "upbit"
         if upbit_selected:
@@ -55,16 +60,61 @@ def set_api_key():
     return render_template("user/set_api_key.html", form=form)
 
 
-@bp.route("/dashboard")
+@bp.route("/dashboard", methods=["GET", "POST"])
 @login_required
 def dashboard():
-    user_strategies = db.session.scalars(
-        sa.select(UserStrategy).where(UserStrategy.user_id == current_user.id)
+    # Get all strategies for the current user
+    user_strategies = list(
+        db.session.scalars(
+            sa.select(UserStrategy).where(UserStrategy.user_id == current_user.id)
+        )
     )
+
+    forms = {}
+
+    # Iterate over each strategy and create a form for each one
+    for user_strategy in user_strategies:
+        form = StartUserStrategyForm()
+
+        # Set the hidden field with the user strategy ID
+        form.strategy_id.data = user_strategy.id
+        # Process the form if it's submitted
+        if form.validate_on_submit() and form.strategy_id.data == user_strategy.id:
+            if form.choice.data == "코인 보유":
+                user_strategy.sell_needed = form.coin_amount.data
+                user_strategy.holding_position = True
+                db.session.commit()
+
+            status, message = (
+                user_strategy.activate()
+            )  # Activate strategy after selling is set
+            if status:
+                flash(
+                    f"{user_strategy.strategy.name} 전략이 성공적으로 활성화 되었습니다."
+                )
+            elif message == "no data":
+                flash(
+                    f"{user_strategy.strategy.name} 전략의 데이터가 아직 준비되지 않았어요. 잠시 후에 다시 시도해주세요."
+                )
+            elif message == "no money":
+                flash(
+                    f"{user_strategy.strategy.name} 전략을 실행하기 위한 전략 투자금이 현재 투자 가능한 잔액보다 높아요."
+                )
+            else:
+                flash(
+                    f"{user_strategy.strategy.name} 전략이 알 수 없는 오류로 활성화에 실패했습니다."
+                )
+
+            return redirect(url_for("user.dashboard"))
+
+        # Store the form associated with the strategy ID
+        forms[user_strategy.id] = form
+
     return render_template(
         "user/dashboard.html",
         title="대시보드",
         user_strategies=user_strategies,
+        forms=forms,
     )
 
 

@@ -1,15 +1,77 @@
 {% extends "base.html" %}
+{% import "bootstrap_wtf.html" as wtf %}
 {% block content %}
     <h1>대시보드</h1>
     <h2>내 전략</h2>
     {% for user_strategy in user_strategies %}
         <p>{{ user_strategy.strategy.name }}</p>
-        <a href="{{ url_for("user.set_strategy", name=user_strategy.strategy.name) }}">투자 세팅하기</a>
-        {% if user_strategy.investing_limit != 0 and user_strategy.execution_time != None %}
-            <p>투자 시작하기</p>
+        <a href="{{ url_for('user.set_strategy', name=user_strategy.strategy.name) }}">투자 세팅하기</a>
+        {% if user_strategy.investing_limit != 0 and user_strategy.execution_time != None and not user_strategy.active %}
+            <!-- Trigger Modal -->
+            <a href="#"
+               class="btn btn-primary"
+               data-bs-toggle="modal"
+               data-bs-target="#myModal{{ user_strategy.id }}">투자 시작하기</a>
+            <!-- Modal -->
+            <div class="modal fade"
+                 id="myModal{{ user_strategy.id }}"
+                 tabindex="-1"
+                 aria-labelledby="exampleModalLabel{{ user_strategy.id }}"
+                 aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content rounded-4 shadow">
+                        <div class="modal-header border-bottom-0">
+                            <h1 class="modal-title fs-5" id="exampleModalLabel{{ user_strategy.id }}">Input Form</h1>
+                            <button type="button"
+                                    class="btn-close"
+                                    data-bs-dismiss="modal"
+                                    aria-label="Close"></button>
+                        </div>
+                        <!-- Render the form for this specific strategy -->
+                        {{ wtf.quick_form(forms[user_strategy.id]) }}
+                    </div>
+                </div>
+            </div>
+        {% elif user_strategy.active %}
+            <p>투자가 실행중입니다.</p>
         {% else %}
             <p>투자를 시작하기 위해서는 전략 투자금과 전략 실행 시간 설정을 완료해야합니다!</p>
         {% endif %}
     {% endfor %}
     <h2>전략 실행</h2>
+{% endblock %}
+{% block script %}
+    <script>
+    // Function to toggle the visibility of the coin amount field
+    function toggleCoinField(modalId) {
+        const coinField = document.querySelector(`#myModal${modalId} #coin_amount`);
+        if (!coinField) return;  // Exit if coinField is not found
+
+        const choiceValue = document.querySelector(`#myModal${modalId} input[name="choice"]:checked`);
+        if (!choiceValue) return;  // Exit if choiceValue is not found
+        
+        if (choiceValue.value === '코인 보유') {
+            coinField.closest('.mb-3').style.display = 'block';
+        } else {
+            coinField.closest('.mb-3').style.display = 'none';
+        }
+    }
+
+    // Add event listeners when the modal is shown
+    document.querySelectorAll('[id^=myModal]').forEach(function(modal) {
+        modal.addEventListener('shown.bs.modal', function() {
+            const modalId = modal.id.replace('myModal', '');
+
+            // Attach change event listener to radio buttons only after modal is opened
+            modal.querySelectorAll('input[name="choice"]').forEach(function(radio) {
+                radio.addEventListener('change', function() {
+                    toggleCoinField(modalId);
+                });
+            });
+
+            // Call toggleCoinField to initialize visibility based on current selection
+            toggleCoinField(modalId);
+        });
+    });
+    </script>
 {% endblock %}

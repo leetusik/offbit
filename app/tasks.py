@@ -5,14 +5,15 @@ import sqlalchemy as sa
 from celery import shared_task
 from flask import current_app
 
-from app import celery, db
+from app import db
 from app.models import Strategy, UserStrategy
 
-REDIS_URL = current_app.config["REDIS_URL"]
+# REDIS_URL = current_app.config["REDIS_URL"]
+REDIS_URL = "redis://192.168.0.13:6379"
 redis_client = redis.StrictRedis.from_url(REDIS_URL)
 
 
-@celery.task(bind=True, default_retry_delay=60, max_retries=5)
+@shared_task(bind=True, default_retry_delay=60, max_retries=5)
 def execute_user_strategy(self, user_strategy_id):
     try:
         user_strategy = db.session.get(UserStrategy, user_strategy_id)
@@ -23,7 +24,7 @@ def execute_user_strategy(self, user_strategy_id):
         raise self.retry(exc=exc)
 
 
-@celery.task
+@shared_task
 def execute_strategies():
     """Launch a Celery task for each user's strategy that needs to be executed."""
     now = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
@@ -47,7 +48,7 @@ def execute_strategies():
 
 
 # need to handle speed. it would slow down as make strategies
-@shared_task(bind=True)
+@shared_task()
 def update_strategies_historical_data():
     # Set a unique lock name for the task
     lock = redis_client.lock("update_strategies_lock", timeout=3600)  # Lock for 1 hour
@@ -67,3 +68,11 @@ def update_strategies_historical_data():
     finally:
         # Ensure the lock is released when the task is done
         lock.release()
+
+
+@shared_task
+def dummy_function(a, b):
+    print(a)
+    print(b)
+    print(f"{a} + {b} = {a+b}")
+    # return None

@@ -10,7 +10,7 @@ import pandas as pd
 import pyupbit
 import sqlalchemy as sa
 import sqlalchemy.orm as so
-from flask import current_app
+from flask import current_app, flash, redirect, url_for
 from flask_login import UserMixin
 
 # from sqlalchemy import Enum
@@ -66,7 +66,7 @@ class User(UserMixin, db.Model):
     # Add available balance field
     available: so.Mapped[int] = so.mapped_column(sa.Integer, nullable=False, default=0)
 
-    strategies: so.Mapped["UserStrategy"] = so.relationship(
+    strategies: so.Mapped[list["UserStrategy"]] = so.relationship(
         "UserStrategy",
         back_populates="user",
         cascade="all, delete-orphan",
@@ -89,7 +89,9 @@ class User(UserMixin, db.Model):
     # Method to update available balance based on strategies
     def update_available(self):
         total_allocated = sum(
-            strategy.investing_limit for strategy in self.strategies if strategy.active
+            strategy.investing_limit
+            for strategy in list(self.strategies)
+            if strategy.active
         )
         self.available = self.upper_limit - total_allocated
         db.session.commit()
@@ -263,6 +265,20 @@ class Strategy(db.Model):
         else:
             long_df = get_dataframe_from_pickle(self.historical_data)
 
+            # check if long_df is outdated. if it is, then get fresh long_df
+            # Assuming formatted_now is a datetime object without seconds (formatted_now = datetime.now().replace(second=0, microsecond=0))
+            formatted_now = datetime.now(timezone.utc).replace(
+                second=0, microsecond=0
+            )  # Convert formatted_now to naive if it has timezone info
+            formatted_now_naive = formatted_now.replace(tzinfo=None)
+            last_row = long_df.iloc[-1]
+            # Convert the 'time_utc' column value from the last row to a datetime object
+            last_time_utc = pd.to_datetime(last_row["time_utc"])
+
+            # Compare the two naive datetime objects
+            if last_time_utc + timedelta(hours=3) < formatted_now_naive:
+                long_df = get_candles()
+
         now_minus_320 = datetime.now(timezone.utc) - timedelta(hours=3, minutes=20)
         now_minus_320 = now_minus_320.strftime("%Y-%m-%d %H:%M:%S")
         short_df = get_candles(start=now_minus_320)
@@ -424,23 +440,23 @@ class UserStrategy(db.Model):
         sa.LargeBinary,
         nullable=True,
     )
+    ## those are for later save data and showing data
+    # def save_historical_data_resampled(self, df: pd.DataFrame):
+    #     """Save the historical data as binary pickle data."""
+    #     # Use df_utils to convert DataFrame to pickle format
+    #     self.historical_data_resampled = save_dataframe_as_pickle(df)
+    #     db.session.commit()
+    #     print(f"Historical data successfully saved to strategy {self.strategy.name}.")
 
-    def save_historical_data_resampled(self, df: pd.DataFrame):
-        """Save the historical data as binary pickle data."""
-        # Use df_utils to convert DataFrame to pickle format
-        self.historical_data_resampled = save_dataframe_as_pickle(df)
-        db.session.commit()
-        print(f"Historical data successfully saved to strategy {self.strategy.name}.")
-
-    def get_historical_data_resampled(self) -> pd.DataFrame:
-        """Retrieve the historical data as a DataFrame."""
-        if self.historical_data_resampled:
-            # Use df_utils to convert binary pickle data back to a DataFrame
-            df = get_dataframe_from_pickle(self.historical_data_resampled)
-            return df
-        else:
-            print(f"No historical data available for strategy {self.strategy.name}.")
-            return None
+    # def get_historical_data_resampled(self) -> pd.DataFrame:
+    #     """Retrieve the historical data as a DataFrame."""
+    #     if self.historical_data_resampled:
+    #         # Use df_utils to convert binary pickle data back to a DataFrame
+    #         df = get_dataframe_from_pickle(self.historical_data_resampled)
+    #         return df
+    #     else:
+    #         print(f"No historical data available for strategy {self.strategy.name}.")
+    #         return None
 
     @property
     def investing_limit(self):
@@ -456,6 +472,7 @@ class UserStrategy(db.Model):
 
     def check_investing_limit(self):
         # Check if the new investing limit exceeds the user's available balance
+        self.user.update_available()
         if self.investing_limit > self.user.available:
             raise ValueError(
                 f"Investing limit {self.investing_limit} exceeds user's available balance of {self.user.available}"
@@ -491,10 +508,19 @@ class UserStrategy(db.Model):
 
     def activate(self):
         """activate a strategy and update the user's available balance."""
-        self.active = True
-        db.session.commit()
+        data_ready = self.strategy.get_short_historical_data()
+        if not data_ready:
+            # Flash error message directly (if in route context)
+            # return redirect(url_for("user.dashboard"))
+            return (False, f"no data")
         # Recalculate the user's available balance
-        self.user.update_available()
+        if self.check_investing_limit():
+            self.active = True
+            db.session.commit()
+            self.user.update_available()
+            return (True, "success")
+        else:
+            return (False, f"no money")
 
     def deactivate(self):
         """Deactivate a strategy and update the user's available balance."""

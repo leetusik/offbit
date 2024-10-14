@@ -5,8 +5,11 @@ from flask_login import current_user
 from flask_wtf import FlaskForm
 from wtforms import (
     BooleanField,
+    FloatField,
+    HiddenField,
     IntegerField,
     PasswordField,
+    RadioField,
     SelectField,
     StringField,
     SubmitField,
@@ -17,6 +20,7 @@ from wtforms.validators import (
     Email,
     EqualTo,
     Length,
+    Optional,
     Regexp,
     ValidationError,
 )
@@ -75,3 +79,15 @@ class SetUserStrategyForm(FlaskForm):
         validators=[DataRequired(message="Execution time is required")],
     )
     submit = SubmitField("Set Strategy")
+
+
+class StartUserStrategyForm(FlaskForm):
+    strategy_id = HiddenField("Strategy ID")
+    choice = RadioField(
+        "해당 전략을 통해 이미 코인을 보유중이신가요?",
+        choices=[("현금 보유", "현금 보유 옵션"), ("코인 보유", "코인 보유 옵션")],
+        validators=[DataRequired()],
+        default="현금 보유",
+    )
+    coin_amount = FloatField("보유한 코인 수량", validators=[Optional()])
+    submit = SubmitField("투자 시작하기")
