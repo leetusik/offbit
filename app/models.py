@@ -10,6 +10,7 @@ import pandas as pd
 import pyupbit
 import sqlalchemy as sa
 import sqlalchemy.orm as so
+from celery.result import AsyncResult
 from flask import current_app, flash, redirect, url_for
 from flask_login import UserMixin
 
@@ -17,6 +18,8 @@ from flask_login import UserMixin
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app import db, login
+
+# from app.tasks import update_strategies_historical_data
 from app.utils.crypto_utils import decrypt_api_key, encrypt_api_key
 from app.utils.df_utils import get_dataframe_from_pickle, save_dataframe_as_pickle
 from app.utils.handle_candle import concat_candles, get_candles
@@ -121,12 +124,13 @@ class User(UserMixin, db.Model):
     def get_open_api_key(self) -> str:
         """Decrypt and retrieve the Upbit API key."""
         private_key = load_private_key(current_app.config["PRIVATE_KEY_PATH"])
+        print(current_app.config["PRIVATE_KEY_PATH"])
         if self.open_api_key_access_upbit and self.open_api_key_secret_upbit:
             return (
-                decrypt_api_key(private_key, self.open_api_key_upbit_access).decode(
+                decrypt_api_key(private_key, self.open_api_key_access_upbit).decode(
                     "utf-8"
                 ),
-                decrypt_api_key(private_key, self.open_api_key_upbit_secret).decode(
+                decrypt_api_key(private_key, self.open_api_key_secret_upbit).decode(
                     "utf-8"
                 ),
             )
@@ -276,12 +280,12 @@ class Strategy(db.Model):
             last_time_utc = pd.to_datetime(last_row["time_utc"])
 
             # Compare the two naive datetime objects
-            if last_time_utc + timedelta(hours=3) < formatted_now_naive:
+            if last_time_utc + timedelta(minutes=50) < formatted_now_naive:
                 long_df = get_candles()
 
-        now_minus_320 = datetime.now(timezone.utc) - timedelta(hours=3, minutes=20)
-        now_minus_320 = now_minus_320.strftime("%Y-%m-%d %H:%M:%S")
-        short_df = get_candles(start=now_minus_320)
+        now_minus_1hour = datetime.now(timezone.utc) - timedelta(hours=1)
+        now_minus_1hour = now_minus_1hour.strftime("%Y-%m-%d %H:%M:%S")
+        short_df = get_candles(start=now_minus_1hour)
         final_df = concat_candles(long_df=long_df, short_df=short_df)
 
         # add feature if final_df(concated df) has a time gap a lot.
@@ -293,6 +297,7 @@ class Strategy(db.Model):
         """The core strategy logic, executed for a specific user."""
         # check if the historical data is updated.
         while True:
+            print(f"{user_strategy} started")
             # Assuming formatted_now is a datetime object without seconds (formatted_now = datetime.now().replace(second=0, microsecond=0))
             formatted_now = datetime.now(timezone.utc).replace(
                 second=0, microsecond=0
@@ -307,10 +312,13 @@ class Strategy(db.Model):
             last_time_utc = pd.to_datetime(last_row["time_utc"])
 
             # Compare the two naive datetime objects
+            print(last_time_utc, formatted_now_naive)
+            print(last_time_utc == formatted_now_naive)
             if last_time_utc == formatted_now_naive:
+                print(f"{user_strategy} data update confirmed")
                 break
             else:
-                time.sleep(0.1)
+                self.make_historical_data()
                 current_app.logger.info(
                     f"User: {user_strategy.user.username}, no historical data updated. try again."
                 )
@@ -321,13 +329,6 @@ class Strategy(db.Model):
             if user_strategy.holding_position:
                 coin_balance: float = upbit.get_balance("KRW-BTC")
                 sell_needed: float = min(coin_balance, user_strategy.sell_needed)
-                # if coin_balance < sell_needed:
-                #     send_email(
-                #         "[Offibit] No sufficient coin is there to automated trading",
-                #         user_strategy.user,
-                #     )
-                #     user_strategy.deactivate()
-                #     return  # Stop execution if there's an unexpected balance change
             else:
                 krw_balance: float = upbit.get_balance()
                 buy_needed: float = min(
@@ -340,7 +341,8 @@ class Strategy(db.Model):
                 user_strategy.execution_time,
                 user_strategy.holding_position,
                 short_historical_data,
-            )  # Pseudo-function to get the buy/sell signal
+            )
+            print(f"condition: {condition}")
 
             if condition == "buy":
                 buy = upbit.buy_market_order("KRW-BTC", buy_needed)
@@ -369,7 +371,8 @@ class Strategy(db.Model):
             # save_data()
 
             # Commit the changes after all updates
-            db.session.commit()
+            # db.session.commit()
+            print("things ended.")
 
             # Log the successful execution
             current_app.logger.info(
@@ -502,14 +505,14 @@ class UserStrategy(db.Model):
         )
 
         self.execution_time = time_obj
-        print(time_obj)
-        print(self.execution_time)
+        # print(time_obj)
+        # print(self.execution_time)
         db.session.commit()
 
     def activate(self):
         """activate a strategy and update the user's available balance."""
         data_ready = self.strategy.get_short_historical_data()
-        if not data_ready:
+        if data_ready is None:
             # Flash error message directly (if in route context)
             # return redirect(url_for("user.dashboard"))
             return (False, f"no data")

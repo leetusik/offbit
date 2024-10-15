@@ -169,3 +169,4 @@ app.db
 migrations
 logs
 *.log
+*.db
