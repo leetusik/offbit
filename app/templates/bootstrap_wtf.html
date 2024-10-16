@@ -29,7 +29,7 @@
         {{ field(class='btn btn-primary mb-3') }}
     {%- else %}
         <div class="mb-3">
-            {{ field.label(class='form-label') }}
+            {{ field.label(class='form-label', id=field.id) }}
             {% if autofocus %}
                 {{ field(class='form-control' + (' is-invalid' if field.errors else '') , autofocus=True) }}
             {% else %}

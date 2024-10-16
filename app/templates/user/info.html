@@ -1,4 +1,23 @@
 {% extends "base.html" %}
+{% block styles %}
+    <style>
+    /* Ensure each card's content is spaced, and the button is aligned at the bottom */
+    .card {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between; /* Pushes the button to the bottom */
+        height: 100%;
+    }
+
+    .card-body {
+        flex-grow: 1; /* Ensures the card body takes up all available space */
+    }
+
+    .card button {
+        margin-top: auto; /* Pushes the button to the bottom */
+    }
+    </style>
+{% endblock %}
 {% block content %}
     <div class="container my-5">
         <!-- Welcome Box -->

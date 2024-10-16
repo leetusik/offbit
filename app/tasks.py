@@ -1,18 +1,45 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import redis
 import sqlalchemy as sa
-from celery import chain, shared_task
+from celery import shared_task
 from flask import current_app
 
 from app import create_app, db
 from app.models import Strategy, UserStrategy
+from app.utils.performance_utils import calculate_performance
 
 app = create_app()
 
 with app.app_context():
     REDIS_URL = current_app.config["REDIS_URL"]
     redis_client = redis.StrictRedis.from_url(REDIS_URL)
+
+
+@shared_task
+def update_strategies_performance():
+    strategies = db.session.scalars(sa.select(Strategy)).all()
+
+    for strategy in strategies:
+        # Calculate performance metrics based on historical data
+        #  = calculate_performance(
+        #     strategy=strategy, time_period=timedelta(days=16)
+        # )
+        #  = calculate_performance(
+        #     strategy=strategy, time_period=timedelta(days=46)
+        # )
+        performance_24h, performance_30d, performance_1y = calculate_performance(
+            strategy=strategy, time_period=timedelta(days=381)
+        )
+        # print(f"strategy:{strategy.id}:performance", "24h", performance_24h)
+        # print(f"strategy:{strategy.id}:performance", "30d", performance_30d)
+        # print(f"strategy:{strategy.id}:performance", "1y", performance_1y)
+        # Store the performance metrics in Redis, with the strategy ID as the key
+        redis_client.hset(f"strategy:{strategy.id}:performance", "24h", performance_24h)
+        redis_client.hset(f"strategy:{strategy.id}:performance", "30d", performance_30d)
+        redis_client.hset(f"strategy:{strategy.id}:performance", "1y", performance_1y)
+
+        # print(f"Performance metrics updated for strategy {strategy.name}")
 
 
 @shared_task

@@ -311,9 +311,6 @@ class Strategy(db.Model):
             # Convert the 'time_utc' column value from the last row to a datetime object
             last_time_utc = pd.to_datetime(last_row["time_utc"])
 
-            # Compare the two naive datetime objects
-            print(last_time_utc, formatted_now_naive)
-            print(last_time_utc == formatted_now_naive)
             if last_time_utc == formatted_now_naive:
                 print(f"{user_strategy} data update confirmed")
                 break
@@ -329,11 +326,13 @@ class Strategy(db.Model):
             if user_strategy.holding_position:
                 coin_balance: float = upbit.get_balance("KRW-BTC")
                 sell_needed: float = min(coin_balance, user_strategy.sell_needed)
+                print(sell_needed)
             else:
                 krw_balance: float = upbit.get_balance()
                 buy_needed: float = min(
                     krw_balance * 0.9995, user_strategy.investing_limit
                 )
+                print(buy_needed)
 
             # Buy & sell condition check and execute order
             condition = get_condition(
@@ -342,6 +341,7 @@ class Strategy(db.Model):
                 user_strategy.holding_position,
                 short_historical_data,
             )
+            # condition = "buy"
             print(f"condition: {condition}")
 
             if condition == "buy":
@@ -356,7 +356,7 @@ class Strategy(db.Model):
                 buy_krw = float(order["price"])
                 fee = float(order["reserved_fee"])
                 executed_volume = float(order["executed_volume"])
-                # buy_price = round((buy_krw + fee) / executed_volume)
+                buy_price = round((buy_krw + fee) / executed_volume)
 
                 user_strategy.sell_needed = executed_volume
                 user_strategy.holding_position = True
@@ -364,15 +364,29 @@ class Strategy(db.Model):
 
             elif condition == "sell":
                 sell = upbit.sell_market_order("KRW-BTC", sell_needed)
+                order = upbit.get_order(sell["uuid"])
+                trades = order.get("trades")
+                while not trades:
+                    time.sleep(1)
+                    order = upbit.get_order(sell["uuid"])
+                    trades = order.get("trades")
+
+                executed_volume = float(order["executed_volume"])
+                fee = float(order["paid_fee"])
+
+                krw_total = 0
+                for trade in trades:
+                    krw_total += float(trade["funds"])
+
+                sell_price = round((krw_total + fee) / executed_volume)
+
+                user_strategy.sell_needed = None
                 user_strategy.holding_position = False
+
                 db.session.commit()
 
             # # Save data
             # save_data()
-
-            # Commit the changes after all updates
-            # db.session.commit()
-            print("things ended.")
 
             # Log the successful execution
             current_app.logger.info(

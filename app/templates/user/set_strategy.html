@@ -4,3 +4,22 @@
     <h1>투자 세팅</h1>
     {{ wtf.quick_form(form) }}
 {% endblock %}
+{% block script %}
+    <script type="text/javascript">
+    document.addEventListener("DOMContentLoaded", function () {
+        // Get the user's timezone using JavaScript
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const execution_time_label = document.getElementById("execution_time")
+        execution_time_label.innerText = execution_time_label.innerText + ` (시간대: ${timezone})`
+
+        // Send the timezone to the Flask server using an AJAX request
+        fetch('/my/set_timezone', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ timezone: timezone })
+        });
+    });
+    </script>
+{% endblock %}

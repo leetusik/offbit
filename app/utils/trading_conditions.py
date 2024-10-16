@@ -20,8 +20,8 @@ def get_condition(
         df["loss"] = np.where(df["price_change"] < 0, -df["price_change"], 0)
         # Calculate the average gain and average loss
         window_length = 14
-        df["avg_gain"] = df["gain"].rolling(window=window_length, min_periods=1).mean()
-        df["avg_loss"] = df["loss"].rolling(window=window_length, min_periods=1).mean()
+        df["avg_gain"] = df["gain"].rolling(window=window_length).mean()
+        df["avg_loss"] = df["loss"].rolling(window=window_length).mean()
 
         # Calculate the RS (Relative Strength) and RSI
         df["rs"] = df["avg_gain"] / df["avg_loss"]

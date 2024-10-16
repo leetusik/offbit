@@ -1,5 +1,8 @@
+from datetime import datetime
+
+import pytz
 import sqlalchemy as sa
-from flask import flash, redirect, render_template, url_for
+from flask import flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, logout_user
 
 from app import db
@@ -124,13 +127,31 @@ def set_strategy(name):
     user_strategy = db.first_or_404(
         sa.select(UserStrategy).where(UserStrategy.strategy.has(name=name))
     )
-    form = SetUserStrategyForm()
+    pre_data = {
+        "investing_limit": user_strategy.investing_limit,
+        "execution_time": user_strategy.execution_time,
+    }
+
+    form = SetUserStrategyForm(data=pre_data)
+
     if form.validate_on_submit():
         investing_limit = form.investing_limit.data
-        execution_time = str(form.execution_time.data)
-        # print(execution_time)
+        execution_time = form.execution_time.data
+
+        # change execution_time to utc #
+        user_timezone = session.get("timezone", "UTC")
+        user_timezone = pytz.timezone(user_timezone)
+        # Create a datetime object for today with the given time
+        local_datetime = datetime.combine(datetime.today(), execution_time)
+
+        # Localize the time to the given timezone
+        localized_time = user_timezone.localize(local_datetime)
+        # Convert to UTC
+        utc_time = localized_time.astimezone(pytz.utc)
+        # change execution_time to utc #
+
         user_strategy.investing_limit = investing_limit
-        user_strategy.set_execution_time(execution_time)
+        user_strategy.set_execution_time(str(utc_time.time()))
         flash(f"{user_strategy.strategy.name} 전략 투자 설정이 완료되었습니다.")
         return redirect(url_for("user.dashboard"))
     return render_template(
@@ -138,3 +159,15 @@ def set_strategy(name):
         title="전략별 투자 설정",
         form=form,
     )
+
+
+@bp.route("/set_timezone", methods=["POST"])
+@login_required
+def set_timezone():
+    data = request.get_json()
+    timezone = data.get("timezone")
+
+    # Store the timezone in the session or the current user object
+    session["timezone"] = timezone
+
+    return "", 204  # Empty response with HTTP status 204 (No Content)

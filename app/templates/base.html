@@ -13,23 +13,8 @@
               rel="stylesheet"
               integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
               crossorigin="anonymous">
-        <style>
-            /* Ensure each card's content is spaced, and the button is aligned at the bottom */
-            .card {
-                display: flex;
-                flex-direction: column;
-                justify-content: space-between; /* Pushes the button to the bottom */
-                height: 100%;
-            }
-    
-            .card-body {
-                flex-grow: 1; /* Ensures the card body takes up all available space */
-            }
-    
-            .card button {
-                margin-top: auto; /* Pushes the button to the bottom */
-            }
-        </style>
+        {% block styles %}
+        {% endblock %}
     </head>
     <body>
         <nav class="navbar navbar-expand-lg bg-body-tertiary">

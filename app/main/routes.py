@@ -1,12 +1,20 @@
+import redis
 import sqlalchemy as sa
 import sqlalchemy.orm as so
-from flask import Blueprint, flash, redirect, render_template, url_for
+from flask import current_app, flash, redirect, render_template, url_for
 from flask_login import current_user, login_required
 
 from app import db
 from app.main import bp
 from app.main.forms import EmptyForm, MakeStrategyForm
 from app.models import Strategy, UserStrategy
+from config import Config
+
+# app = create_app()
+
+# with current_app.app_context():
+REDIS_URL = Config.REDIS_URL
+redis_client = redis.StrictRedis.from_url(REDIS_URL)
 
 
 @bp.route("/")
@@ -25,9 +33,32 @@ def explain():
 @bp.route("/strategies")
 def strategies():
     strategies = db.session.scalars(sa.select(Strategy)).all()
+    performance_data = {}
+    for strategy in strategies:
+        # Fetch performance metrics from Redis
+        performance_24h = redis_client.hget(
+            f"strategy:{strategy.id}:performance", "24h"
+        )
+        performance_30d = redis_client.hget(
+            f"strategy:{strategy.id}:performance", "30d"
+        )
+        performance_1y = redis_client.hget(f"strategy:{strategy.id}:performance", "1y")
+
+        performance_data[strategy.id] = {
+            "name": strategy.name,
+            "24h": performance_24h.decode() if performance_24h else "N/A",
+            "30d": performance_30d.decode() if performance_30d else "N/A",
+            "1y": performance_1y.decode() if performance_1y else "N/A",
+        }
+
     form = EmptyForm()
+
     return render_template(
-        "strategies.html", title="전략랭킹", strategies=strategies, form=EmptyForm()
+        "strategies.html",
+        title="전략랭킹",
+        strategies=strategies,
+        form=form,
+        performance_data=performance_data,
     )
 
 
@@ -57,6 +88,30 @@ def to_my_strategies(name):
         db.session.add(user_strategy)
         db.session.commit()
         flash(f"{strategy.name} 전략이 내 전략에 포함되었습니다!")
+        return redirect(url_for("main.strategies"))
+    else:
+        return redirect(url_for("main.index"))
+
+
+@bp.route("/remove_from_strategies/<name>", methods=["POST"])
+@login_required
+def remove_from_strategies(name):
+    form = EmptyForm()
+    if form.validate_on_submit():
+        strategy = db.session.scalar(sa.select(Strategy).where(Strategy.name == name))
+
+        if strategy is None:
+            flash("해당 전략을 찾을 수 없습니다.")
+            return redirect(url_for("main.strategies"))
+
+        user_strategy = db.session.scalar(
+            sa.select(UserStrategy)
+            .where(UserStrategy.user_id == current_user.id)
+            .where(UserStrategy.strategy_id == strategy.id)
+        )
+        db.session.delete(user_strategy)
+        db.session.commit()
+        flash(f"{strategy.name} 전략이 내 전략에서 삭제되었습니다.")
         return redirect(url_for("main.strategies"))
     else:
         return redirect(url_for("main.index"))

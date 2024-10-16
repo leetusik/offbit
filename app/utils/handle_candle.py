@@ -23,9 +23,13 @@ def get_candles(
     interval="minutes",
     market="KRW-BTC",
     count="200",
-    start="2024-01-01 00:00:00",
+    start=None,
     interval2="1",
 ):
+    if start is None:
+        # Default start to one year before the current date and time
+        start = (datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d %H:%M:%S")
+
     times = get_time_intervals(
         initial_time_str=start,
         interval=interval,
