@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import redis
 import sqlalchemy as sa
 import sqlalchemy.orm as so
@@ -44,8 +46,18 @@ def strategies():
         )
         performance_1y = redis_client.hget(f"strategy:{strategy.id}:performance", "1y")
 
+        last_update_str = redis_client.hget("strategy performance check", "last_update")
+
+        if last_update_str:
+            last_update_str = last_update_str.decode()
+            last_update_datetime = datetime.strptime(
+                last_update_str, "%Y-%m-%d %H:%M:%S"
+            )
+            last_update_datetime = last_update_datetime.replace(tzinfo=timezone.utc)
+
         performance_data[strategy.id] = {
             "name": strategy.name,
+            "last_update": last_update_datetime if last_update_str else "N/A",
             "24h": performance_24h.decode() if performance_24h else "N/A",
             "30d": performance_30d.decode() if performance_30d else "N/A",
             "1y": performance_1y.decode() if performance_1y else "N/A",

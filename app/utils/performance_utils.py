@@ -35,15 +35,11 @@ def calculate_performance(
             strategy.make_historical_data()
 
     df = strategy.get_historical_data()
-
     # Filter the data to only include rows within the specified time period
     end_time = pd.Timestamp.now(tz="UTC").to_pydatetime().replace(tzinfo=None)
     start_time = end_time - time_period
-    # print(start_time)
     filtered_df = df[df["time_utc"] >= start_time]
-
     df = resample_df(df=filtered_df, execution_time=execution_time)
-    print(df, len(df))
     if strategy.name == "rsi_cut_5%":
         # Calculate the price change
         df["price_change"] = df["open"].diff()
@@ -138,6 +134,7 @@ def calculate_performance(
 
         # Calculate the benchmark cumulative returns (buy and hold strategy)
         df["benchmark_returns"] = (1 + df["open"].pct_change()).cumprod()
+
         day_ago_balance = df["cumulative_returns2"].iloc[-2]
 
         month_ago_balance = df["cumulative_returns2"].iloc[-31]
@@ -150,7 +147,6 @@ def calculate_performance(
         total_return_month = (last_day_balance - month_ago_balance) / month_ago_balance
         total_return_year = (last_day_balance - year_ago_balance) / year_ago_balance
 
-        df.to_csv("temp.csv")
         return (
             round(float(total_return_day), 2),
             round(float(total_return_month), 2),

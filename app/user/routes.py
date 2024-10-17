@@ -6,9 +6,10 @@ from flask import flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, logout_user
 
 from app import db
-from app.models import User, UserStrategy
+from app.models import Strategy, User, UserStrategy
 from app.user import bp
 from app.user.forms import (
+    EmptyForm,
     SetAPIKeyForm,
     SetUserStrategyForm,
     StartUserStrategyForm,
@@ -74,7 +75,7 @@ def dashboard():
     )
 
     forms = {}
-
+    form_e = EmptyForm()
     # Iterate over each strategy and create a form for each one
     for user_strategy in user_strategies:
         form = StartUserStrategyForm()
@@ -118,6 +119,7 @@ def dashboard():
         title="대시보드",
         user_strategies=user_strategies,
         forms=forms,
+        form_e=form_e,
     )
 
 
@@ -161,13 +163,45 @@ def set_strategy(name):
     )
 
 
-@bp.route("/set_timezone", methods=["POST"])
+@bp.route("/remove_from_strategies/<name>", methods=["POST"])
 @login_required
-def set_timezone():
-    data = request.get_json()
-    timezone = data.get("timezone")
+def remove_from_strategies(name):
+    form = EmptyForm()
+    if form.validate_on_submit():
+        strategy = db.session.scalar(sa.select(Strategy).where(Strategy.name == name))
 
-    # Store the timezone in the session or the current user object
-    session["timezone"] = timezone
+        if strategy is None:
+            flash("해당 전략을 찾을 수 없습니다.")
+            return redirect(url_for("main.strategies"))
 
-    return "", 204  # Empty response with HTTP status 204 (No Content)
+        user_strategy = db.session.scalar(
+            sa.select(UserStrategy)
+            .where(UserStrategy.user_id == current_user.id)
+            .where(UserStrategy.strategy_id == strategy.id)
+        )
+        db.session.delete(user_strategy)
+        db.session.commit()
+        flash(f"{strategy.name} 전략이 내 전략에서 삭제되었습니다.")
+        return redirect(url_for("user.dashboard"))
+    else:
+        return redirect(url_for("main.index"))
+
+
+@bp.route("/no_setting_no_start", methods=["POST"])
+def no_setting_no_start():
+    flash("투자를 시작하기 위해서 투자 세팅을 완료해주세요.")
+    return redirect(url_for("user.dashboard"))
+
+
+@bp.route("/deactivate_user_strategy/<user_strategy_id>", methods=["POST"])
+def deactivate_user_strategy(user_strategy_id):
+    user_strategy = db.session.scalar(
+        sa.select(UserStrategy).where(UserStrategy.id == user_strategy_id)
+    )
+    if not user_strategy:
+        flash("해당 전략을 찾지 못했습니다.")
+        return redirect("user.dashboard")
+
+    user_strategy.deactivate()
+    flash(f"{user_strategy.strategy.name} 전략을 성공적으로 중지했습니다.")
+    return redirect(url_for("user.dashboard"))

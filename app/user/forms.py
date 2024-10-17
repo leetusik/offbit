@@ -91,3 +91,7 @@ class StartUserStrategyForm(FlaskForm):
     )
     coin_amount = FloatField("보유한 코인 수량", validators=[Optional()])
     submit = SubmitField("투자 시작하기")
+
+
+class EmptyForm(FlaskForm):
+    submit = SubmitField("Submit")

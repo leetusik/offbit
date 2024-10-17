@@ -1,47 +1,126 @@
 {% extends "base.html" %}
 {% import "bootstrap_wtf.html" as wtf %}
+{% block styles %}
+    <style>
+    form {
+        display: inline;
+        margin-right: 0px;
+    }
+    form input[type="submit"] {
+        background: none;
+        border: none;
+        color: inherit;
+        font-size: 1em; /* Adjust the size of the star if needed */
+        cursor: pointer;
+        /* padding: 0; */
+    }
+    .more-tight {
+        padding: 0;
+        width: 17px;
+    }
+
+    .hidden_time {
+        display: none;
+    }
+    </style>
+{% endblock %}
 {% block content %}
     <h1>대시보드</h1>
-    <h2>내 전략</h2>
-    {% for user_strategy in user_strategies %}
-        <p>{{ user_strategy.strategy.name }}</p>
-        <a href="{{ url_for('user.set_strategy', name=user_strategy.strategy.name) }}">투자 세팅하기</a>
-        {% if user_strategy.investing_limit != 0 and user_strategy.execution_time != None and not user_strategy.active %}
-            <!-- Trigger Modal -->
-            <a href="#"
-               class="btn btn-primary"
-               data-bs-toggle="modal"
-               data-bs-target="#myModal{{ user_strategy.id }}">투자 시작하기</a>
-            <!-- Modal -->
-            <div class="modal fade"
-                 id="myModal{{ user_strategy.id }}"
-                 tabindex="-1"
-                 aria-labelledby="exampleModalLabel{{ user_strategy.id }}"
-                 aria-hidden="true">
-                <div class="modal-dialog">
-                    <div class="modal-content rounded-4 shadow">
-                        <div class="modal-header border-bottom-0">
-                            <h1 class="modal-title fs-5" id="exampleModalLabel{{ user_strategy.id }}">Input Form</h1>
-                            <button type="button"
-                                    class="btn-close"
-                                    data-bs-dismiss="modal"
-                                    aria-label="Close"></button>
-                        </div>
-                        <!-- Render the form for this specific strategy -->
-                        {{ wtf.quick_form(forms[user_strategy.id]) }}
-                    </div>
-                </div>
-            </div>
-        {% elif user_strategy.active %}
-            <p>투자가 실행중입니다.</p>
-        {% else %}
-            <p>투자를 시작하기 위해서는 전략 투자금과 전략 실행 시간 설정을 완료해야합니다!</p>
-        {% endif %}
-    {% endfor %}
-    <h2>전략 실행</h2>
+    <div class="container mt-5">
+        <h2 class="mb-4">내 전략</h2>
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th scope="col" class="more-tight"></th>
+                    <th scope="col">#</th>
+                    <th scope="col">이름</th>
+                    <th scope="col" class="d-none d-md-table-cell">투자 한도</th>
+                    <th scope="col" class="d-none d-md-table-cell">투자 실행 시간</th>
+                    <th scope="col"></th>
+                    <th scope="col"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user_strategy in user_strategies %}
+                    <tr>
+                        <th scope="row" class="more-tight">
+                            <form action="{{ url_for('user.remove_from_strategies', name=user_strategy.strategy.name) }}"
+                                  method="post">
+                                {{ form_e.hidden_tag() }}
+                                {{ form_e.submit(value="★", data_bs_toggle="tooltip", title="내 전략에서 제거하기") }}
+                            </form>
+                        </th>
+                        <td>{{ user_strategy.strategy.id }}</td>
+                        <td>{{ user_strategy.strategy.name }}</td>
+                        <td class="d-none d-md-table-cell">
+                            {% if user_strategy.investing_limit %}
+                                <span>{{ user_strategy.investing_limit }}</span>
+                            {% else %}
+                                <span>X</span>
+                            {% endif %}
+                        </td>
+                        <td id="execution_time{{ user_strategy.id }}"
+                            class="d-none d-md-table-cell">
+                            {% if user_strategy.execution_time %}
+                                <span>{{ user_strategy.execution_time.strftime("%H:%M") }}</span>
+                            {% else %}
+                                <span>X</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('user.set_strategy', name=user_strategy.strategy.name) }}"
+                               class="btn btn-primary">설정</a>
+                        </td>
+                        <td>
+                            {% if user_strategy.investing_limit != 0 and user_strategy.execution_time != None and not user_strategy.active %}
+                                <a href="#"
+                                   class="btn btn-primary"
+                                   data-bs-toggle="modal"
+                                   data-bs-target="#myModal{{ user_strategy.id }}">시작</a>
+                                <!-- Modal -->
+                                <div class="modal fade"
+                                     id="myModal{{ user_strategy.id }}"
+                                     tabindex="-1"
+                                     aria-labelledby="exampleModalLabel{{ user_strategy.id }}"
+                                     aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content rounded-4 shadow">
+                                            <div class="modal-header border-bottom-0">
+                                                <h1 class="modal-title fs-5" id="exampleModalLabel{{ user_strategy.id }}">Input Form</h1>
+                                                <button type="button"
+                                                        class="btn-close"
+                                                        data-bs-dismiss="modal"
+                                                        aria-label="Close"></button>
+                                            </div>
+                                            <!-- Render the form for this specific strategy -->
+                                            {{ wtf.quick_form(forms[user_strategy.id]) }}
+                                        </div>
+                                    </div>
+                                </div>
+                            {% elif user_strategy.active %}
+                                <form action="{{ url_for("user.deactivate_user_strategy", user_strategy_id=user_strategy.id) }}"
+                                      method="post"
+                                      style="display:inline">
+                                    {{ form_e.hidden_tag() }}  <!-- CSRF token for Flask-WTF forms (optional if using Flask-WTF) -->
+                                    <button type="submit" class="btn btn-danger">중지</button>
+                                </form>
+                            {% else %}
+                                <form action="{{ url_for("user.no_setting_no_start") }}"
+                                      method="post"
+                                      style="display:inline">
+                                    {{ form_e.hidden_tag() }}  <!-- CSRF token for Flask-WTF forms (optional if using Flask-WTF) -->
+                                    <button type="submit" class="btn btn-warning">시작</button>
+                                </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 {% endblock %}
 {% block script %}
-    <script>
+    <script type="text/javascript">
     // Function to toggle the visibility of the coin amount field
     function toggleCoinField(modalId) {
         const coinField = document.querySelector(`#myModal${modalId} #coin_amount`);
@@ -72,6 +151,48 @@
             // Call toggleCoinField to initialize visibility based on current selection
             toggleCoinField(modalId);
         });
+    });
+    document.addEventListener("DOMContentLoaded", function () {
+
+    // Initialize tooltips for all elements with `data-bs-toggle="tooltip"`
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+    // Get the user's timezone using JavaScript
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    // Get all the <td> elements with id starting with "execution_time"
+    const executionTimeElements = document.querySelectorAll('td[id^="execution_time"]');
+
+    // Loop through each execution time element
+    executionTimeElements.forEach(function (executionTimeElement) {
+        // Get the text content (UTC time) from the element
+        const utcTime = executionTimeElement.innerText.trim();
+        
+        // If utcTime is "X" or not a valid time, skip this iteration
+        if (utcTime === "X" || !utcTime.includes(":")) {
+            return;  // Skip to the next iteration
+        }
+        // Convert the UTC time to the user's local time
+        if (utcTime) {
+            const [utcHours, utcMinutes] = utcTime.split(':').map(Number);
+
+            // Create a new Date object using the UTC time
+            const now = new Date();
+            const utcDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), utcHours, utcMinutes));
+
+            // Convert to user's local time using the detected timezone
+            const localDate = new Date(utcDate.toLocaleString('en-US', { timeZone: timezone }));
+
+            // Extract the local hours and minutes
+            const localHours = localDate.getHours().toString().padStart(2, '0');
+            const localMinutes = localDate.getMinutes().toString().padStart(2, '0');
+
+            // Update the element with the local time
+            executionTimeElement.innerText = `${localHours}:${localMinutes}`;
+        }
+    });
     });
     </script>
 {% endblock %}

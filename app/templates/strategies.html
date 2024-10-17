@@ -1,106 +1,125 @@
 {% extends "base.html" %}
 {% block styles %}
     <style>
-    .card {
-        box-shadow: 0 20px 27px 0 rgb(0 0 0 / 5%);
+    form {
+        display: inline;
+        margin-right: 0px;
+    }
+    form input[type="submit"] {
+        background: none;
+        border: none;
+        color: inherit;
+        font-size: 1em; /* Adjust the size of the star if needed */
+        cursor: pointer;
+        /* padding: 0; */
+    }
+    .more-tight {
+        padding: 0;
+        width: 17px;
     }
 
-    .card {
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        word-wrap: break-word;
-        background-color: #fff;
-        background-clip: border-box;
-        border: 0 solid rgba(0,0,0,.125);
-        border-radius: 1rem;
-    }
-
-    .card-body {
-        -webkit-box-flex: 1;
-        -ms-flex: 1 1 auto;
-        flex: 1 1 auto;
-        padding: 1.5rem 1.5rem;
-    }
-    .avatar-text {
-        display: -webkit-box;
-        display: -ms-flexbox;
-        display: flex;
-        -webkit-box-pack: center;
-        -ms-flex-pack: center;
-        justify-content: center;
-        -webkit-box-align: center;
-        -ms-flex-align: center;
-        align-items: center;
-        background: #000;
-        color: #fff;
-        font-weight: 700;
-    }
-
-    .avatar {
-        width: 3rem;
-        height: 3rem;
-    }
-    .rounded-3 {
-        border-radius: 0.5rem!important;
-    }
-    .mb-2 {
-        margin-bottom: 0.5rem!important;
-    }
-    .me-4 {
-        margin-right: 1.5rem!important;
+    .hidden_time {
+        display: none;
     }
     </style>
 {% endblock %}
 {% block content %}
-    <h1>전략랭킹</h1>
     <a href="{{ url_for("main.make_strategy") }}">전략 만들기</a>
-    <div class="container">
-        <div class="text-center mb-5">
-            <h3>전략랭킹</h3>
-            <p class="lead">Eros ante urna tortor aliquam nisl magnis quisque hac</p>
-        </div>
-        {% for strategy in strategies %}
-            <p>{{ performance_data[strategy.id] }}</p>
-            <div class="card mb-3">
-                <div class="card-body">
-                    <div class="d-flex flex-column flex-lg-row">
-                        <span class="avatar avatar-text rounded-3 me-4 mb-2">ST</span>
-                        <div class="row flex-fill">
-                            <div class="col-sm-5">
-                                <h4 class="h5">{{ strategy.name }}</h4>
-                                <span class="badge bg-secondary">WORLDWIDE</span> <span class="badge bg-success">$60K - $100K</span>
-                            </div>
-                            <div class="col-sm-4 py-2">
-                                <span class="badge bg-secondary">REACT</span>
-                                <span class="badge bg-secondary">NODE</span>
-                                <span class="badge bg-secondary">TYPESCRIPT</span>
-                                <span class="badge bg-secondary">JUNIOR</span>
-                            </div>
-                            <div class="col-sm-3 text-lg-end">
-                                {% if current_user.is_authenticated and not current_user.is_my_strategy(strategy) %}
-                                    <p>
-                                        <form action="{{ url_for("main.to_my_strategies", name=strategy.name) }}"
-                                              method="post">
-                                            {{ form.hidden_tag() }}
-                                            {{ form.submit(value="내 전략에 추가하기", class_="btn btn-primary stretched-link") }}
-                                        </form>
-                                    </p>
-                                {% else %}
-                                    <p>
-                                        <form action="{{ url_for("main.remove_from_strategies", name=strategy.name) }}"
-                                              method="post">
-                                            {{ form.hidden_tag() }}
-                                            {{ form.submit(value="내 전략에서 제거하기", class_="btn btn-primary stretched-link") }}
-                                        </form>
-                                    </p>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        {% endfor %}
+    <div class="container mt-5">
+        <h1 class="mb-4">전략랭킹</h1>
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th scope="col" class="more-tight"></th>
+                    <th scope="col">#</th>
+                    <th scope="col">이름</th>
+                    <th scope="col" class="d-none d-md-table-cell">24h %</th>
+                    <th scope="col">30d %</th>
+                    <th scope="col" class="d-none d-md-table-cell">1y %</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for strategy in strategies %}
+                    <p class="hidden_time" id="strategy{{ strategy.id }}">
+                        {{ moment(performance_data[strategy.id]['last_update']).format('YYYY-MM-DD HH:mm:ss') }}
+                    </p>
+                    <tr data-bs-toggle="tooltip"
+                        title="마지막 업데이트"
+                        id="tooltip{{ strategy.id }}">
+                        <th scope="row" class="more-tight">
+                            {% if current_user.is_authenticated and not current_user.is_my_strategy(strategy) %}
+                                <form action="{{ url_for('main.to_my_strategies', name=strategy.name) }}"
+                                      method="post">
+                                    {{ form.hidden_tag() }}
+                                    {{ form.submit(value="✩", data_bs_toggle="tooltip", title="내 전략에 추가하기") }}
+                                </form>
+                            {% else %}
+                                <form action="{{ url_for('main.remove_from_strategies', name=strategy.name) }}"
+                                      method="post">
+                                    {{ form.hidden_tag() }}
+                                    {{ form.submit(value="★", data_bs_toggle="tooltip", title="내 전략에서 제거하기") }}
+                                </form>
+                            {% endif %}
+                        </th>
+                        <td>{{ strategy.id }}</td>
+                        <td>{{ strategy.name }}</td>
+                        <td class="d-none d-md-table-cell">
+                            <span class="{{ 'text-danger' if '-' in performance_data[strategy.id]["24h"] else "text-success" }}">{{ performance_data[strategy.id]["24h"] }}</span>
+                        </td>
+                        <td>
+                            <span class="{{ 'text-danger' if '-' in performance_data[strategy.id]["30d"] else "text-success" }}">{{ performance_data[strategy.id]["30d"] }}</span>
+                        </td>
+                        <td class="d-none d-md-table-cell">
+                            <span class="{{ 'text-danger' if '-' in performance_data[strategy.id]["1y"] else "text-success" }}">{{ performance_data[strategy.id]["1y"] }}</span>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
+{% endblock %}
+{% block script %}
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Select all elements with `id` that start with "strategy"
+
+        // Initialize tooltips for all elements with `data-bs-toggle="tooltip"`
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+
+        var strategyElements = document.querySelectorAll('p[id^="strategy"]');
+
+        // Loop through each strategy element
+        strategyElements.forEach(function (strategyElement) {
+            // Get the child <span> inside the <p>
+            var spanElement = strategyElement.querySelector('span');
+            if (spanElement) {
+                // Use the data-timestamp attribute to get the raw UTC time
+                var rawTimestamp = spanElement.getAttribute('data-timestamp');
+                
+                // Format the raw timestamp using moment.js into the desired local format
+                var formattedTime = moment(rawTimestamp).local().format('YYYY-MM-DD HH:mm:ss');
+                
+                // Set the formatted time as the strategyText
+                var strategyText = formattedTime;
+                console.log(strategyText); // Logs the formatted local time
+                
+                // Find the corresponding tooltip element by replacing "strategy" with "tooltip"
+                var strategyId = strategyElement.getAttribute('id');
+                var tooltipId = strategyId.replace('strategy', 'tooltip');
+                var tooltipElement = document.getElementById(tooltipId);
+
+                // Set the `title` attribute for the tooltip element
+                if (tooltipElement && strategyText) {
+                    tooltipElement.setAttribute('title', '마지막 업데이트: ' + strategyText);
+
+                    // Initialize the Bootstrap tooltip
+                    new bootstrap.Tooltip(tooltipElement);
+                }
+            }
+        });
+    });
+    </script>
 {% endblock %}

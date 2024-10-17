@@ -286,6 +286,7 @@ class Strategy(db.Model):
         now_minus_1hour = datetime.now(timezone.utc) - timedelta(hours=1)
         now_minus_1hour = now_minus_1hour.strftime("%Y-%m-%d %H:%M:%S")
         short_df = get_candles(start=now_minus_1hour)
+
         final_df = concat_candles(long_df=long_df, short_df=short_df)
 
         # add feature if final_df(concated df) has a time gap a lot.

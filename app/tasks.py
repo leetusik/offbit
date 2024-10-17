@@ -35,6 +35,9 @@ def update_strategies_performance():
         # print(f"strategy:{strategy.id}:performance", "30d", performance_30d)
         # print(f"strategy:{strategy.id}:performance", "1y", performance_1y)
         # Store the performance metrics in Redis, with the strategy ID as the key
+        last_update = str(datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+
+        redis_client.hset(f"strategy performance check", "last_update", last_update)
         redis_client.hset(f"strategy:{strategy.id}:performance", "24h", performance_24h)
         redis_client.hset(f"strategy:{strategy.id}:performance", "30d", performance_30d)
         redis_client.hset(f"strategy:{strategy.id}:performance", "1y", performance_1y)
@@ -44,8 +47,21 @@ def update_strategies_performance():
 
 @shared_task
 def update_and_execute():
-    update_strategies_historical_data()
-    execute_strategies.delay()
+    # Set a unique lock name for the task
+    lock = redis_client.lock("update_and_execute", timeout=3600)  # Lock for 1 hour
+    have_lock = lock.acquire(blocking=False)
+
+    if not have_lock:
+        # If another worker is running this task, exit the function
+        print("Another instance of update_and_execute is already running.")
+        return
+    try:
+        update_strategies_historical_data()
+        execute_strategies.delay()
+        update_strategies_performance.delay()
+    finally:
+        # Ensure the lock is released when the task is done
+        lock.release()
 
 
 @shared_task

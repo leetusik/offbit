@@ -9,10 +9,33 @@
     document.addEventListener("DOMContentLoaded", function () {
         // Get the user's timezone using JavaScript
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const execution_time_label = document.getElementById("execution_time")
-        execution_time_label.innerText = execution_time_label.innerText + ` (시간대: ${timezone})`
 
-        // Send the timezone to the Flask server using an AJAX request
+        // Get the input field with id="execution_time"
+        const executionTimeInput = document.querySelector('input#execution_time');
+
+        // Get the UTC time from the input value (in HH:MM format)
+        const utcTime = executionTimeInput.value;
+
+        // Convert the UTC time to the user's local time
+        if (utcTime) {
+            const [utcHours, utcMinutes] = utcTime.split(':').map(Number);
+
+            // Create a new Date object using the UTC time
+            const now = new Date();
+            const utcDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), utcHours, utcMinutes));
+
+            // Convert to user's local time using the detected timezone
+            const localDate = new Date(utcDate.toLocaleString('en-US', { timeZone: timezone }));
+
+            // Extract the local hours and minutes
+            const localHours = localDate.getHours().toString().padStart(2, '0');
+            const localMinutes = localDate.getMinutes().toString().padStart(2, '0');
+
+            // Update the input value with the local time
+            executionTimeInput.value = `${localHours}:${localMinutes}`;
+        }
+
+        // Send the timezone to the Flask server using an AJAX request (optional, if needed)
         fetch('/my/set_timezone', {
             method: 'POST',
             headers: {
