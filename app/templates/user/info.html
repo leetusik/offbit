@@ -13,7 +13,7 @@
         flex-grow: 1; /* Ensures the card body takes up all available space */
     }
 
-    .card button {
+    .card button{
         margin-top: auto; /* Pushes the button to the bottom */
     }
     </style>
@@ -64,8 +64,13 @@
                             <p class="card-text">Open API Key를 연동해주세요.</p>
                         {% endif %}
                     </div>
-                    {% if user.open_api_key_upbit %}
-                        <button class="btn btn-outline-secondary btn-sm">해제하기</button>
+                    {% if user.open_api_key_access_upbit %}
+                        <form action="{{ url_for("user.unset_api_key") }}"
+                              method="post"
+                              style="display:inline">
+                            {{ form_e.hidden_tag() }}  <!-- This is optional if you're using CSRF protection -->
+                            <button type="submit" class="btn btn-outline-secondary btn-sm w-100">해제하기</button>
+                        </form>
                     {% else %}
                         <a href="{{ url_for("user.set_api_key") }}"
                            class="btn btn-outline-secondary btn-sm">연동하기</a>

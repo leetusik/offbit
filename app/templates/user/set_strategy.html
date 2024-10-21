@@ -9,6 +9,9 @@
     document.addEventListener("DOMContentLoaded", function () {
         // Get the user's timezone using JavaScript
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        
+        const execution_time_label = document.getElementById("execution_time")
+        execution_time_label.innerText = execution_time_label.innerText + ` (시간대: ${timezone})`
 
         // Get the input field with id="execution_time"
         const executionTimeInput = document.querySelector('input#execution_time');

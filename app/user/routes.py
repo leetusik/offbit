@@ -1,6 +1,8 @@
 from datetime import datetime
 
 import pytz
+
+# import requests
 import sqlalchemy as sa
 from flask import flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, logout_user
@@ -15,14 +17,22 @@ from app.user.forms import (
     StartUserStrategyForm,
     UserResetPasswordForm,
 )
+from app.utils.formatter import format_integer
 
-# from app.user.forms import
+# # Function to get the server's public IP address
+# def get_public_ip():
+#     try:
+#         # This service returns the public IP address of the server
+#         return requests.get("https://api.ipify.org").text
+#     except requests.RequestException:
+#         return None  # Handle failure to get the IP
 
 
 @bp.route("/info")
 @login_required
 def user_info():
-    return render_template("user/info.html", user=current_user)
+    form_e = EmptyForm()
+    return render_template("user/info.html", user=current_user, form_e=form_e)
 
 
 @bp.route("/reset_password", methods=["GET", "POST"])
@@ -43,6 +53,7 @@ def user_reset_password():
 @login_required
 def set_api_key():
     form = SetAPIKeyForm()
+    server_ip = "61.73.154.79"
     if form.validate_on_submit():
         upbit_selected = form.platform.data == "upbit"
         if upbit_selected:
@@ -55,19 +66,40 @@ def set_api_key():
                 api_key_secret=api_key_secret,
                 expiration_date=expiration_date,
             )
+            try:
+                upbit = current_user.create_upbit_client()
+                balance = upbit.get_balances()
 
-            # Save changes to the database
-            db.session.commit()
+                # Check if there is an error in the balance response
+                if isinstance(balance, dict) and "error" in balance:
+                    error_name = balance["error"]["name"]
+                    if error_name == "no_authorization_ip":
+                        flash(
+                            "API 연동에 실패했습니다. 서버 IP 주소를 업비트 화이트리스트에 등록해주세요.",
+                            "danger",
+                        )
+                        db.session.rollback()
+                        return redirect(
+                            url_for("user.set_api_key")
+                        )  # Redirect or handle as needed
 
-            flash("API가 성공적으로 연동되었습니다.")
-        return redirect(url_for("user.user_info"))
-    return render_template("user/set_api_key.html", form=form)
+                flash("API가 성공적으로 연동되었습니다.")
+                # Save changes to the database
+                db.session.commit()
+                return redirect(url_for("user.user_info"))
+
+            except:
+                flash("API가 연동에 실패했습니다. 올바른 키 값을 입력해주세요.")
+                db.session.rollback()
+                return redirect(url_for("user.set_api_key"))
+    return render_template("user/set_api_key.html", form=form, server_ip=server_ip)
 
 
 @bp.route("/dashboard", methods=["GET", "POST"])
 @login_required
 def dashboard():
     # Get all strategies for the current user
+    membership_dic = {"bike": "🚲", "motorcycle": "🛵", "car": "🚗", "airplane": "🛩️"}
     user_strategies = list(
         db.session.scalars(
             sa.select(UserStrategy).where(UserStrategy.user_id == current_user.id)
@@ -83,43 +115,50 @@ def dashboard():
         # Set the hidden field with the user strategy ID
         form.strategy_id.data = user_strategy.id
         # Process the form if it's submitted
-        if form.validate_on_submit() and form.strategy_id.data == user_strategy.id:
+        # if form.validate_on_submit() and form.strategy_id.data == user_strategy.id:
+        if form.validate_on_submit() and form.strategy_id.data == int(
+            request.form.get("strategy_id")
+        ):
             if form.choice.data == "코인 보유":
                 user_strategy.sell_needed = form.coin_amount.data
                 user_strategy.holding_position = True
                 db.session.commit()
-
-            status, message = (
-                user_strategy.activate()
-            )  # Activate strategy after selling is set
-            if status:
-                flash(
-                    f"{user_strategy.strategy.name} 전략이 성공적으로 활성화 되었습니다."
-                )
-            elif message == "no data":
-                flash(
-                    f"{user_strategy.strategy.name} 전략의 데이터가 아직 준비되지 않았어요. 잠시 후에 다시 시도해주세요."
-                )
-            elif message == "no money":
-                flash(
-                    f"{user_strategy.strategy.name} 전략을 실행하기 위한 전략 투자금이 현재 투자 가능한 잔액보다 높아요."
-                )
             else:
-                flash(
-                    f"{user_strategy.strategy.name} 전략이 알 수 없는 오류로 활성화에 실패했습니다."
-                )
+                user_strategy.sell_needed = 0
+                user_strategy.holding_position = False
+                db.session.commit()
+            try:
+                status, message = (
+                    user_strategy.activate()
+                )  # Activate strategy after selling is set
+                if status:
+                    flash(
+                        f"{user_strategy.strategy.name} 전략이 성공적으로 활성화 되었습니다."
+                    )
+                elif message == "no data":
+                    flash(
+                        f"{user_strategy.strategy.name} 전략의 데이터가 아직 준비되지 않았어요. 잠시 후에 다시 시도해주세요."
+                    )
+                else:
+                    flash(
+                        f"{user_strategy.strategy.name} 전략이 알 수 없는 오류로 활성화에 실패했습니다."
+                    )
+            except ValueError as e:
+                # no money
+                flash(str(e))
 
             return redirect(url_for("user.dashboard"))
 
         # Store the form associated with the strategy ID
         forms[user_strategy.id] = form
-
     return render_template(
         "user/dashboard.html",
         title="대시보드",
         user_strategies=user_strategies,
         forms=forms,
         form_e=form_e,
+        format_integer=format_integer,
+        membership_dic=membership_dic,
     )
 
 
@@ -127,7 +166,9 @@ def dashboard():
 @login_required
 def set_strategy(name):
     user_strategy = db.first_or_404(
-        sa.select(UserStrategy).where(UserStrategy.strategy.has(name=name))
+        sa.select(UserStrategy)
+        .where(UserStrategy.strategy.has(name=name))
+        .where(UserStrategy.user_id == current_user.id)
     )
     pre_data = {
         "investing_limit": user_strategy.investing_limit,
@@ -205,3 +246,36 @@ def deactivate_user_strategy(user_strategy_id):
     user_strategy.deactivate()
     flash(f"{user_strategy.strategy.name} 전략을 성공적으로 중지했습니다.")
     return redirect(url_for("user.dashboard"))
+
+
+@bp.route("/no_setting_while_investing", methods=["POST"])
+def no_setting_while_investing():
+    flash(
+        "투자 중에는 투자 설정을 변경할 수 없어요. 먼저 투자를 중지한 후에 설정을 변경해주세요."
+    )
+    return redirect(url_for("user.dashboard"))
+
+
+@bp.route("/set_timezone", methods=["POST"])
+@login_required
+def set_timezone():
+    data = request.get_json()
+    timezone = data.get("timezone")
+    # Store the timezone in the session or the current user object
+    session["timezone"] = timezone
+    return "", 204  # Empty response with HTTP status 204 (No Content)
+
+
+@bp.route("/unset_api_key", methods=["POST"])
+@login_required
+def unset_api_key():
+    # Unset the API key fields for the current user
+    current_user.open_api_key_access_upbit = None
+    current_user.open_api_key_secret_upbit = None
+    current_user.api_key_expiration_upbit = None
+
+    # Save changes to the database
+    db.session.commit()
+
+    flash("API 연동이 성공적으로 해제되었습니다.", "success")
+    return redirect(url_for("user.user_info"))

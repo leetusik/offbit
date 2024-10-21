@@ -20,6 +20,7 @@ from wtforms.validators import (
     Email,
     EqualTo,
     Length,
+    NumberRange,
     Optional,
     Regexp,
     ValidationError,
@@ -55,7 +56,7 @@ class UserResetPasswordForm(FlaskForm):
 class SetAPIKeyForm(FlaskForm):
     platform = SelectField(
         "Platform",
-        choices=[("upbit", "Upbit"), ("bithumb", "Bithumb")],
+        choices=[("upbit", "Upbit")],
         default="upbit",
         validators=[DataRequired()],
     )
@@ -72,7 +73,15 @@ class SetAPIKeyForm(FlaskForm):
 
 
 class SetUserStrategyForm(FlaskForm):
-    investing_limit = IntegerField("전략 투자금 한도", validators=[DataRequired()])
+    investing_limit = IntegerField(
+        "전략 투자금 한도",
+        validators=[
+            DataRequired(),
+            NumberRange(
+                min=10000, message="투자금은 10,000원 이상부터 설정 가능합니다."
+            ),
+        ],
+    )
     execution_time = TimeField(
         "투자 기준 시간",
         # format="%H:%M:%S",  # This ensures input is in HH:MM:SS format

@@ -22,19 +22,55 @@
     .hidden_time {
         display: none;
     }
+
+    .investing_limit_info {
+        table-layout: auto;
+        width: auto;
+    }
+    .uniform-row {
+        display: table-row;
+        height: 80px; /* Set this to the maximum height you want */
+    }
+
     </style>
 {% endblock %}
 {% block content %}
     <h1>대시보드</h1>
     <div class="container mt-5">
-        <h2 class="mb-4">내 전략</h2>
+        <div class="row align-items-center justify-content-between">
+            <!-- Column for Title "내 전략" -->
+            <div class="col-md-6">
+                <h2 class="mb-0">내 전략</h2>
+                <!-- Set margin-bottom to 0 to remove the gap -->
+            </div>
+            <!-- Column for membership info and table, aligned right -->
+            <div class="col-md-auto col-12 text-md-end text-start mt-3 mt-md-0">
+                <table class="table table-borderless text-center align-middle investing_limit_info">
+                    <thead>
+                        <tr>
+                            <th scope="col">멤버십</th>
+                            <th scope="col">투자 가능 금액</th>
+                            <th scope="col">투자 한도 금액</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>{{ membership_dic[current_user.membership_type.value] }}</td>
+                            <td>{{ format_integer(current_user.available) }}원</td>
+                            <td>{{ format_integer(current_user.upper_limit) }}원</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <!-- The rest of the content goes below -->
         <table class="table table-hover align-middle">
             <thead>
                 <tr>
                     <th scope="col" class="more-tight"></th>
                     <th scope="col">#</th>
                     <th scope="col">이름</th>
-                    <th scope="col" class="d-none d-md-table-cell">투자 한도</th>
+                    <th scope="col" class="d-none d-md-table-cell">투자 한도 (₩)</th>
                     <th scope="col" class="d-none d-md-table-cell">투자 실행 시간</th>
                     <th scope="col"></th>
                     <th scope="col"></th>
@@ -42,7 +78,7 @@
             </thead>
             <tbody>
                 {% for user_strategy in user_strategies %}
-                    <tr>
+                    <tr class="uniform-row">
                         <th scope="row" class="more-tight">
                             <form action="{{ url_for('user.remove_from_strategies', name=user_strategy.strategy.name) }}"
                                   method="post">
@@ -54,7 +90,7 @@
                         <td>{{ user_strategy.strategy.name }}</td>
                         <td class="d-none d-md-table-cell">
                             {% if user_strategy.investing_limit %}
-                                <span>{{ user_strategy.investing_limit }}</span>
+                                <span>{{ format_integer(user_strategy.investing_limit) }}</span>
                             {% else %}
                                 <span>X</span>
                             {% endif %}
@@ -68,8 +104,22 @@
                             {% endif %}
                         </td>
                         <td>
-                            <a href="{{ url_for('user.set_strategy', name=user_strategy.strategy.name) }}"
-                               class="btn btn-primary">설정</a>
+                            {% if not user_strategy.active %}
+                                <a href="{{ url_for('user.set_strategy', name=user_strategy.strategy.name) }}"
+                                   class="btn btn-primary">설정</a>
+                            {% else %}
+                                {% if user_strategy.holding_position %}
+                                    <div>
+                                        <p class="mb-1">매도대기</p>
+                                        <p class="text-muted small">({{ user_strategy.sell_needed }} BTC)</p>
+                                    </div>
+                                {% else %}
+                                    <div>
+                                        <p class="mb-1">매수대기</p>
+                                        <p class="text-muted small">({{ format_integer(user_strategy.investing_limit) }}원)</p>
+                                    </div>
+                                {% endif %}
+                            {% endif %}
                         </td>
                         <td>
                             {% if user_strategy.investing_limit != 0 and user_strategy.execution_time != None and not user_strategy.active %}

@@ -22,6 +22,7 @@ from app import db, login
 # from app.tasks import update_strategies_historical_data
 from app.utils.crypto_utils import decrypt_api_key, encrypt_api_key
 from app.utils.df_utils import get_dataframe_from_pickle, save_dataframe_as_pickle
+from app.utils.formatter import format_integer
 from app.utils.handle_candle import concat_candles, get_candles
 from app.utils.key_manager import load_private_key, load_public_key
 from app.utils.trading_conditions import get_condition
@@ -294,32 +295,35 @@ class Strategy(db.Model):
         self.save_historical_data(final_df)
         pass
 
-    def execute_logic_for_user(self, user_strategy):
+    def execute_logic_for_user(self, user_strategy, manual_start: bool = False):
         """The core strategy logic, executed for a specific user."""
         # check if the historical data is updated.
-        while True:
-            print(f"{user_strategy} started")
-            # Assuming formatted_now is a datetime object without seconds (formatted_now = datetime.now().replace(second=0, microsecond=0))
-            formatted_now = datetime.now(timezone.utc).replace(
-                second=0, microsecond=0
-            )  # Convert formatted_now to naive if it has timezone info
-            formatted_now_naive = formatted_now.replace(tzinfo=None)
+        if not manual_start:
+            while True:
+                print(f"{user_strategy} started")
+                # Assuming formatted_now is a datetime object without seconds (formatted_now = datetime.now().replace(second=0, microsecond=0))
+                formatted_now = datetime.now(timezone.utc).replace(
+                    second=0, microsecond=0
+                )  # Convert formatted_now to naive if it has timezone info
+                formatted_now_naive = formatted_now.replace(tzinfo=None)
 
+                short_historical_data = self.get_short_historical_data()
+                # Get the last row of the DataFrame
+                last_row = short_historical_data.iloc[-1]
+
+                # Convert the 'time_utc' column value from the last row to a datetime object
+                last_time_utc = pd.to_datetime(last_row["time_utc"])
+
+                if last_time_utc == formatted_now_naive:
+                    print(f"{user_strategy} data update confirmed")
+                    break
+                else:
+                    self.make_historical_data()
+                    current_app.logger.info(
+                        f"User: {user_strategy.user.username}, no historical data updated. try again."
+                    )
+        else:
             short_historical_data = self.get_short_historical_data()
-            # Get the last row of the DataFrame
-            last_row = short_historical_data.iloc[-1]
-
-            # Convert the 'time_utc' column value from the last row to a datetime object
-            last_time_utc = pd.to_datetime(last_row["time_utc"])
-
-            if last_time_utc == formatted_now_naive:
-                print(f"{user_strategy} data update confirmed")
-                break
-            else:
-                self.make_historical_data()
-                current_app.logger.info(
-                    f"User: {user_strategy.user.username}, no historical data updated. try again."
-                )
 
         try:
             upbit = user_strategy.user.create_upbit_client()
@@ -493,8 +497,9 @@ class UserStrategy(db.Model):
         self.user.update_available()
         if self.investing_limit > self.user.available:
             raise ValueError(
-                f"Investing limit {self.investing_limit} exceeds user's available balance of {self.user.available}"
+                f"{self.strategy.name} 전략을 실행하기 위한 투자 한도 {format_integer(self.investing_limit)}원이 {self.user.username} 님의 남은 투자 한도 {format_integer(self.user.available)}원보다 높아요."
             )
+
         return True
 
     def execute(self):
@@ -533,6 +538,7 @@ class UserStrategy(db.Model):
             return (False, f"no data")
         # Recalculate the user's available balance
         if self.check_investing_limit():
+            self.strategy.execute_logic_for_user(user_strategy=self, manual_start=True)
             self.active = True
             db.session.commit()
             self.user.update_available()

@@ -2,5 +2,9 @@
 {% import "bootstrap_wtf.html" as wtf %}
 {% block content %}
     <h1>API Key 연동하기</h1>
+    <p>
+        서버의 IP 주소: <strong>{{ server_ip }}</strong>
+    </p>
+    <p>이 IP 주소를 Upbit 계정의 화이트리스트에 추가한 후 API 키를 연동하세요.</p>
     {{ wtf.quick_form(form) }}
 {% endblock %}
