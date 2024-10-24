@@ -2,12 +2,14 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
+import sqlalchemy as sa
 
-from app.models import Strategy
+from app import db
+from app.models import Coin, Strategy
 from app.utils.trading_conditions import get_condition, resample_df
 
 
-def calculate_performance(
+def calculate_strategy_performance(
     strategy: Strategy,
     time_period: timedelta,
     execution_time: datetime = datetime(1970, 1, 1, 0, 0),
@@ -20,7 +22,7 @@ def calculate_performance(
         )  # Convert formatted_now to naive if it has timezone info
         formatted_now_naive = formatted_now.replace(tzinfo=None)
 
-        short_historical_data = strategy.get_short_historical_data()
+        short_historical_data = strategy.coins[0].get_short_historical_data()
         # Get the last row of the DataFrame
         last_row = short_historical_data.iloc[-1]
 
@@ -34,7 +36,7 @@ def calculate_performance(
             print("no pass!")
             strategy.make_historical_data()
 
-    df = strategy.get_historical_data()
+    df = strategy.coins[0].get_historical_data()
     # Filter the data to only include rows within the specified time period
     end_time = pd.Timestamp.now(tz="UTC").to_pydatetime().replace(tzinfo=None)
     start_time = end_time - time_period
@@ -168,18 +170,69 @@ def calculate_performance(
             round(float(total_return_day), 2),
             round(float(total_return_month), 2),
             round(float(total_return_year), 2),
-            round(float(benchmark_return_day), 2),
-            round(float(benchmark_return_month), 2),
-            round(float(benchmark_return_year), 2),
         )
+
+
+def calculate_coin_performance(
+    coin: Coin,
+    execution_time: datetime = datetime(1970, 1, 1, 0, 0),
+) -> float:
+
+    while True:
+        # Assuming formatted_now is a datetime object without seconds (formatted_now = datetime.now().replace(second=0, microsecond=0))
+        formatted_now = datetime.now(timezone.utc).replace(
+            second=0, microsecond=0
+        )  # Convert formatted_now to naive if it has timezone info
+        formatted_now_naive = formatted_now.replace(tzinfo=None)
+
+        short_historical_data = coin.get_short_historical_data()
+        # Get the last row of the DataFrame
+        last_row = short_historical_data.iloc[-1]
+
+        # Convert the 'time_utc' column value from the last row to a datetime object
+        last_time_utc = pd.to_datetime(last_row["time_utc"])
+
+        if last_time_utc == formatted_now_naive:
+            print("pass!")
+            break
+        else:
+            print("no pass!")
+            coin.make_historical_data()
+
+    df = coin.get_historical_data()
+    # # Filter the data to only include rows within the specified time period
+    # end_time = pd.Timestamp.now(tz="UTC").to_pydatetime().replace(tzinfo=None)
+    # start_time = end_time - time_period
+    # filtered_df = df[df["time_utc"] >= start_time]
+    df = resample_df(df=df, execution_time=execution_time)
+    # Calculate the benchmark cumulative returns (buy and hold strategy)
+    df["coin_returns"] = (1 + df["open"].pct_change()).cumprod()
+
+    day_ago_coin = df["coin_returns"].iloc[-2]
+
+    month_ago_coin = df["coin_returns"].iloc[-31]
+
+    year_ago_coin = df["coin_returns"].iloc[-366]
+
+    last_day_coin = df["coin_returns"].iloc[-1]
+
+    coin_return_day = (last_day_coin - day_ago_coin) / day_ago_coin
+    coin_return_month = (last_day_coin - month_ago_coin) / month_ago_coin
+    coin_return_year = (last_day_coin - year_ago_coin) / year_ago_coin
+    return (
+        round(float(coin_return_day), 2),
+        round(float(coin_return_month), 2),
+        round(float(coin_return_year), 2),
+    )
 
 
 def get_backtest(
     strategy: Strategy,
+    selected_coin=str,
     execution_time: datetime = datetime(1970, 1, 1, 0, 0),
 ) -> float:
-
-    df = strategy.get_historical_data()
+    coin = db.session.scalar(sa.select(Coin).where(Coin.name == selected_coin))
+    df = coin.get_historical_data()
     # Filter the data to only include rows within the specified time period
     # end_time = pd.Timestamp.now(tz="UTC").to_pydatetime().replace(tzinfo=None)
     # start_time = end_time - time_period

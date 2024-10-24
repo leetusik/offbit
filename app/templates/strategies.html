@@ -66,21 +66,24 @@
                 </tr>
             </thead>
             <tbody>
-                {% for benchmark in benchmarks %}
+                {% for coin in coins %}
+                    <p class="hidden_time" id="coin{{ coin.id }}">
+                        {{ moment(coin_performance_data[coin.id]['last_update']).format('YYYY-MM-DD HH:mm:ss') }}
+                    </p>
                     <tr data-bs-toggle="tooltip"
                         title="마지막 업데이트"
-                        id="tooltip{{ benchmark.id }}">
+                        id="coin_tooltip{{ coin.id }}">
                         <th scope="row" class="more-tight"></th>
-                        <td class="col-id">{{ benchmark.id }}</td>
-                        <td class="col-name">{{ benchmark.name }}</td>
+                        <td class="col-id">{{ coin.id }}</td>
+                        <td class="col-name">{{ coin.name }}</td>
                         <td class="d-none d-md-table-cell col-24h">
-                            <span class="{{ 'text-danger' if '-' in benchmark_data[benchmark.id]["24h"] else "text-success" }}">{{ benchmark_data[benchmark.id]["24h"] }}</span>
+                            <span class="{{ 'text-danger' if '-' in coin_performance_data[coin.id]["24h"] else "text-success" }}">{{ coin_performance_data[coin.id]["24h"] }}</span>
                         </td>
                         <td class="col-30d">
-                            <span class="{{ 'text-danger' if '-' in benchmark_data[benchmark.id]["30d"] else "text-success" }}">{{ benchmark_data[benchmark.id]["30d"] }}</span>
+                            <span class="{{ 'text-danger' if '-' in coin_performance_data[coin.id]["30d"] else "text-success" }}">{{ coin_performance_data[coin.id]["30d"] }}</span>
                         </td>
                         <td class="d-none d-md-table-cell col-1y">
-                            <span class="{{ 'text-danger' if '-' in benchmark_data[benchmark.id]["1y"] else "text-success" }}">{{ benchmark_data[benchmark.id]["1y"] }}</span>
+                            <span class="{{ 'text-danger' if '-' in coin_performance_data[coin.id]["1y"] else "text-success" }}">{{ coin_performance_data[coin.id]["1y"] }}</span>
                         </td>
                     </tr>
                 {% endfor %}
@@ -103,11 +106,11 @@
             <tbody>
                 {% for strategy in strategies %}
                     <p class="hidden_time" id="strategy{{ strategy.id }}">
-                        {{ moment(performance_data[strategy.id]['last_update']).format('YYYY-MM-DD HH:mm:ss') }}
+                        {{ moment(strategy_performance_data[strategy.id]['last_update']).format('YYYY-MM-DD HH:mm:ss') }}
                     </p>
                     <tr data-bs-toggle="tooltip"
                         title="마지막 업데이트"
-                        id="tooltip{{ strategy.id }}"
+                        id="strategy_tooltip{{ strategy.id }}"
                         class="strategy-row"
                         onclick="window.location.href='{{ url_for("main.strategy", strategy_id=strategy.id) }}'">
                         <th scope="row" class="more-tight">
@@ -128,13 +131,13 @@
                         <td class="col-id">{{ strategy.id }}</td>
                         <td class="col-name">{{ strategy.name }}</td>
                         <td class="d-none d-md-table-cell col-24h">
-                            <span class="{{ 'text-danger' if '-' in performance_data[strategy.id]["24h"] else "text-success" }}">{{ performance_data[strategy.id]["24h"] }}</span>
+                            <span class="{{ 'text-danger' if '-' in strategy_performance_data[strategy.id]["24h"] else "text-success" }}">{{ strategy_performance_data[strategy.id]["24h"] }}</span>
                         </td>
                         <td class="col-30d">
-                            <span class="{{ 'text-danger' if '-' in performance_data[strategy.id]["30d"] else "text-success" }}">{{ performance_data[strategy.id]["30d"] }}</span>
+                            <span class="{{ 'text-danger' if '-' in strategy_performance_data[strategy.id]["30d"] else "text-success" }}">{{ strategy_performance_data[strategy.id]["30d"] }}</span>
                         </td>
                         <td class="d-none d-md-table-cell col-1y">
-                            <span class="{{ 'text-danger' if '-' in performance_data[strategy.id]["1y"] else "text-success" }}">{{ performance_data[strategy.id]["1y"] }}</span>
+                            <span class="{{ 'text-danger' if '-' in strategy_performance_data[strategy.id]["1y"] else "text-success" }}">{{ strategy_performance_data[strategy.id]["1y"] }}</span>
                         </td>
                     </tr>
                 {% endfor %}
@@ -172,12 +175,42 @@
                 
                 // Find the corresponding tooltip element by replacing "strategy" with "tooltip"
                 var strategyId = strategyElement.getAttribute('id');
-                var tooltipId = strategyId.replace('strategy', 'tooltip');
+                var tooltipId = strategyId.replace('strategy', 'strategy_tooltip');
                 var tooltipElement = document.getElementById(tooltipId);
 
                 // Set the `title` attribute for the tooltip element
                 if (tooltipElement && strategyText) {
                     tooltipElement.setAttribute('title', '마지막 업데이트: ' + strategyText);
+
+                    // Initialize the Bootstrap tooltip
+                    new bootstrap.Tooltip(tooltipElement);
+                }
+            }
+        });
+        
+        var coinElements = document.querySelectorAll('p[id^="coin"]');
+        coinElements.forEach(function (coinElement) {
+            // Get the child <span> inside the <p>
+            var spanElement = coinElement.querySelector('span');
+            if (spanElement) {
+                // Use the data-timestamp attribute to get the raw UTC time
+                var rawTimestamp = spanElement.getAttribute('data-timestamp');
+                
+                // Format the raw timestamp using moment.js into the desired local format
+                var formattedTime = moment(rawTimestamp).local().format('YYYY-MM-DD HH:mm:ss');
+                
+                // Set the formatted time as the coinText
+                var coinText = formattedTime;
+                console.log(coinText); // Logs the formatted local time
+                
+                // Find the corresponding tooltip element by replacing "coin" with "tooltip"
+                var coinId = coinElement.getAttribute('id');
+                var tooltipId = coinId.replace('coin', 'coin_tooltip');
+                var tooltipElement = document.getElementById(tooltipId);
+
+                // Set the `title` attribute for the tooltip element
+                if (tooltipElement && coinText) {
+                    tooltipElement.setAttribute('title', '마지막 업데이트: ' + coinText);
 
                     // Initialize the Bootstrap tooltip
                     new bootstrap.Tooltip(tooltipElement);

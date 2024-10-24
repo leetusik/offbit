@@ -6,6 +6,7 @@ import redis
 import sqlalchemy as sa
 import sqlalchemy.orm as so
 from flask import (
+    abort,
     current_app,
     flash,
     redirect,
@@ -46,25 +47,33 @@ def explain():
 @bp.route("/strategies")
 def strategies():
 
-    benchmarks = db.session.scalars(sa.select(Coin)).all()
-    benchmark_data = {}
-    for benchmark in benchmarks:
-        benchmark_24h = redis_client.hget(
-            f"benchmark:{benchmark.id}:performance", "24h"
-        )
-        benchmark_30d = redis_client.hget(
-            f"benchmark:{benchmark.id}:performance", "30d"
-        )
-        benchmark_1y = redis_client.hget(f"benchmark:{benchmark.id}:performance", "1y")
-        benchmark_data[benchmark.id] = {
-            "name": benchmark.name,
-            "24h": benchmark_24h.decode() if benchmark_24h else "N/A",
-            "30d": benchmark_30d.decode() if benchmark_30d else "N/A",
-            "1y": benchmark_1y.decode() if benchmark_1y else "N/A",
+    coins = db.session.scalars(sa.select(Coin)).all()
+    coin_performance_data = {}
+    for coin in coins:
+        # Fetch performance metrics from Redis
+        performance_24h = redis_client.hget(f"coin:{coin.id}:performance", "24h")
+        performance_30d = redis_client.hget(f"coin:{coin.id}:performance", "30d")
+        performance_1y = redis_client.hget(f"coin:{coin.id}:performance", "1y")
+
+        last_update_str = redis_client.hget(f"coin:{coin.id}:update", "last_update")
+
+        if last_update_str:
+            last_update_str = last_update_str.decode()
+            last_update_datetime = datetime.strptime(
+                last_update_str, "%Y-%m-%d %H:%M:%S"
+            )
+            last_update_datetime = last_update_datetime.replace(tzinfo=timezone.utc)
+
+        coin_performance_data[coin.id] = {
+            "name": coin.name,
+            "last_update": last_update_datetime if last_update_str else "N/A",
+            "24h": performance_24h.decode() if performance_24h else "N/A",
+            "30d": performance_30d.decode() if performance_30d else "N/A",
+            "1y": performance_1y.decode() if performance_1y else "N/A",
         }
 
     strategies = db.session.scalars(sa.select(Strategy)).all()
-    performance_data = {}
+    strategy_performance_data = {}
     for strategy in strategies:
         # Fetch performance metrics from Redis
         performance_24h = redis_client.hget(
@@ -75,7 +84,9 @@ def strategies():
         )
         performance_1y = redis_client.hget(f"strategy:{strategy.id}:performance", "1y")
 
-        last_update_str = redis_client.hget("strategy performance check", "last_update")
+        last_update_str = redis_client.hget(
+            f"strategy:{strategy.id}:update", "last_update"
+        )
 
         if last_update_str:
             last_update_str = last_update_str.decode()
@@ -84,7 +95,7 @@ def strategies():
             )
             last_update_datetime = last_update_datetime.replace(tzinfo=timezone.utc)
 
-        performance_data[strategy.id] = {
+        strategy_performance_data[strategy.id] = {
             "name": strategy.name,
             "last_update": last_update_datetime if last_update_str else "N/A",
             "24h": performance_24h.decode() if performance_24h else "N/A",
@@ -99,9 +110,9 @@ def strategies():
         title="전략랭킹",
         strategies=strategies,
         form=form,
-        performance_data=performance_data,
-        benchmark_data=benchmark_data,
-        benchmarks=benchmarks,
+        strategy_performance_data=strategy_performance_data,
+        coin_performance_data=coin_performance_data,
+        coins=coins,
     )
 
 
@@ -109,15 +120,23 @@ def strategies():
 def strategy(strategy_id):
     # Retrieve the strategy object from the database
     execution_time = session.get("execution_time", None)
-    if execution_time != None:
+    if execution_time:
         # Convert to a datetime.time object
         execution_time = datetime.strptime(execution_time, "%H:%M:%S").time()
     pre_data = {
         "execution_time": execution_time,
     }
     form = SetBacktestExecutionTimeForm(data=pre_data)
-    # form = SetBacktestExecutionTimeForm()
     strategy = db.first_or_404(sa.select(Strategy).where(Strategy.id == strategy_id))
+
+    # get selected_coin
+    selected_coin = request.args.get("coin")  # No need for a default value here
+
+    # Check if the selected coin is provided or if it's not in the strategy's coins
+    if selected_coin is None:
+        selected_coin = strategy.coins[0].name  # Set to the first coin if not provided
+    elif selected_coin not in [coin.name for coin in strategy.coins]:
+        abort(404)  # Abort if the selected coin is not in the strategy's coins
 
     # If the form is submitted and valid, pass the execution time as an argument
     if form.validate_on_submit():
@@ -135,6 +154,7 @@ def strategy(strategy_id):
         utc_time = localized_time.astimezone(pytz.utc)
         df = get_backtest(
             strategy=strategy,
+            selected_coin=selected_coin,
             execution_time=datetime(1970, 1, 1, utc_time.hour, utc_time.minute),
         )
     else:
@@ -152,10 +172,14 @@ def strategy(strategy_id):
             utc_time = localized_time.astimezone(pytz.utc)
             df = get_backtest(
                 strategy=strategy,
+                selected_coin=selected_coin,
                 execution_time=datetime(1970, 1, 1, utc_time.hour, utc_time.minute),
             )
         else:
-            df = get_backtest(strategy=strategy)
+            df = get_backtest(
+                strategy=strategy,
+                selected_coin=selected_coin,
+            )
 
     # Convert the time_utc column from string to datetime (assumed to be in UTC)
     df["time_utc"] = pd.to_datetime(df["time_utc"], utc=True)  # Ensure it's tz-aware
@@ -192,7 +216,6 @@ def strategy(strategy_id):
     times = times[1:]
     cumulative_returns2 = cumulative_returns2[1:]
     close_prices = close_prices[1:]
-
     # Normalize both datasets to start from 100
     start_value = 100
     close_prices_normalized = [
@@ -203,6 +226,7 @@ def strategy(strategy_id):
     ]
     performance_dict = get_performance(df)
     # Pass data to the template
+    # df.to_csv("temp.csv")
     return render_template(
         "strategy.html",
         strategy=strategy,

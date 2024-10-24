@@ -62,8 +62,9 @@ def create_app(config_class=Config):
                 {"app.tasks.update_and_execute": {"queue": "offbit"}},
                 {"app.tasks.execute_strategies": {"queue": "offbit"}},
                 {"app.tasks.execute_user_strategy": {"queue": "offbit"}},
-                {"app.tasks.update_strategies_historical_data": {"queue": "offbit"}},
+                {"app.tasks.update_coins_historical_data": {"queue": "offbit"}},
                 {"app.tasks.update_strategies_performance": {"queue": "offbit"}},
+                {"app.tasks.update_coins_performance": {"queue": "offbit"}},
             ],
         ),
     )

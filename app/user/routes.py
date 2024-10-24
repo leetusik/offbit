@@ -100,6 +100,7 @@ def set_api_key():
 def dashboard():
     # Get all strategies for the current user
     membership_dic = {"bike": "🚲", "motorcycle": "🛵", "car": "🚗", "airplane": "🛩️"}
+    current_user.update_available()
     user_strategies = list(
         db.session.scalars(
             sa.select(UserStrategy).where(UserStrategy.user_id == current_user.id)

@@ -12,16 +12,35 @@
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-md-6 text-center">
-                <form method="get"
-                      action="{{ url_for('main.strategy', strategy_id=strategy.id) }}">
-                    <button type="submit" name="range" value="30d" class="btn btn-primary">Last 30 Days</button>
-                    <button type="submit" name="range" value="1y" class="btn btn-primary">Last 1 Year</button>
-                    <button type="submit" name="range" value="all" class="btn btn-primary">All Time</button>
+                <form method="get" id="timeRangeForm">
+                    <button type="button"
+                            onclick="submitWithParam('range', '30d')"
+                            class="btn btn-primary">Last 30 Days</button>
+                    <button type="button"
+                            onclick="submitWithParam('range', '1y')"
+                            class="btn btn-primary">Last 1 Year</button>
+                    <button type="button"
+                            onclick="submitWithParam('range', 'all')"
+                            class="btn btn-primary">All Time</button>
                 </form>
             </div>
         </div>
     </div>
     <canvas id="strategyChart" width="400" height="200"></canvas>
+    <!-- Coin Select Buttons -->
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-6 text-center">
+                <form method="get" id="coinForm">
+                    {% for coin in strategy.coins %}
+                        <button type="button"
+                                onclick="submitWithParam('coin', '{{ coin.name }}')"
+                                class="btn btn-primary">{{ coin.name }}</button>
+                    {% endfor %}
+                </form>
+            </div>
+        </div>
+    </div>
     <!-- Display Performance Metrics -->
     <div class="container mt-4">
         <h2>Performance Metrics</h2>
@@ -67,6 +86,21 @@
 {% endblock %}
 {% block script %}
     <script>
+    // Function to submit the form with added query parameters
+    function submitWithParam(paramName, paramValue) {
+        // Get the current URL and its search parameters
+        const url = new URL(window.location.href);
+        const params = new URLSearchParams(url.search);
+
+        // Set or update the parameter in the URL
+        params.set(paramName, paramValue);
+
+        // Create the new URL with updated parameters
+        const newUrl = `${url.pathname}?${params.toString()}`;
+
+        // Redirect to the new URL
+        window.location.href = newUrl;
+    }
 document.addEventListener("DOMContentLoaded", function () {
 // Get the user's timezone using JavaScript
 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;

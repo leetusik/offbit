@@ -6,8 +6,11 @@ from celery import shared_task
 from flask import current_app
 
 from app import create_app, db
-from app.models import Strategy, UserStrategy
-from app.utils.performance_utils import calculate_performance
+from app.models import Coin, Strategy, UserStrategy
+from app.utils.performance_utils import (
+    calculate_coin_performance,
+    calculate_strategy_performance,
+)
 
 app = create_app()
 
@@ -25,20 +28,31 @@ def update_strategies_performance():
             performance_24h,
             performance_30d,
             performance_1y,
-            benchmark_24h,
-            benchmark_30d,
-            benchmark_1y,
-        ) = calculate_performance(strategy=strategy, time_period=timedelta(days=381))
+        ) = calculate_strategy_performance(
+            strategy=strategy, time_period=timedelta(days=381)
+        )
         last_update = str(datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
-        redis_client.hset(f"strategy performance check", "last_update", last_update)
+        redis_client.hset(f"strategy:{strategy.id}:update", "last_update", last_update)
         redis_client.hset(f"strategy:{strategy.id}:performance", "24h", performance_24h)
         redis_client.hset(f"strategy:{strategy.id}:performance", "30d", performance_30d)
         redis_client.hset(f"strategy:{strategy.id}:performance", "1y", performance_1y)
-        redis_client.hset(f"benchmark:1:performance", "24h", benchmark_24h)
-        redis_client.hset(f"benchmark:1:performance", "30d", benchmark_30d)
-        redis_client.hset(f"benchmark:1:performance", "1y", benchmark_1y)
 
-    # print(f"Performance metrics updated for strategy {strategy.name}")
+
+@shared_task
+def update_coins_performance():
+    coins = db.session.scalars(sa.select(Coin)).all()
+
+    for coin in coins:
+        (
+            coin_24h,
+            coin_30d,
+            coin_1y,
+        ) = calculate_coin_performance(coin=coin)
+        last_update = str(datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+        redis_client.hset(f"coin:{coin.id}:update", "last_update", last_update)
+        redis_client.hset(f"coin:{coin.id}:performance", "24h", coin_24h)
+        redis_client.hset(f"coin:{coin.id}:performance", "30d", coin_30d)
+        redis_client.hset(f"coin:{coin.id}:performance", "1y", coin_1y)
 
 
 @shared_task
@@ -52,12 +66,14 @@ def update_and_execute():
         print("Another instance of update_and_execute is already running.")
         return
     try:
-        update_strategies_historical_data()
+        update_coins_historical_data()
         execute_strategies.delay()
 
         current = datetime.now()
         if current.minute == 0:
-            update_strategies_performance.delay()
+            update_coins_performance()
+            update_strategies_performance()
+
     finally:
         # Ensure the lock is released when the task is done
         lock.release()
@@ -103,23 +119,21 @@ def execute_strategies():
 
 # need to handle speed. it would slow down as make strategies
 @shared_task()
-def update_strategies_historical_data():
-    print("task update_strategies_historical_data executed.")
+def update_coins_historical_data():
+    print("task update_coins_historical_data executed.")
     # Set a unique lock name for the task
     lock = redis_client.lock("update_strategies_lock", timeout=3600)  # Lock for 1 hour
     have_lock = lock.acquire(blocking=False)
 
     if not have_lock:
         # If another worker is running this task, exit the function
-        print(
-            "Another instance of update_strategies_historical_data is already running."
-        )
+        print("Another instance of update_coins_historical_data is already running.")
         return
     try:
-        strategies = db.session.scalars(sa.select(Strategy)).all()
-        for strategy in strategies:
+        coins = db.session.scalars(sa.select(Coin)).all()
+        for coin in coins:
             # can't do seperate and delay bcs there are limit on the api call.
-            strategy.make_historical_data()
+            coin.make_historical_data()
     finally:
         # Ensure the lock is released when the task is done
         lock.release()

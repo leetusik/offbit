@@ -27,6 +27,21 @@ from app.utils.handle_candle import concat_candles, get_candles
 from app.utils.key_manager import load_private_key, load_public_key
 from app.utils.trading_conditions import get_condition
 
+tickers = {
+    "bitcoin": "KRW-BTC",
+    "ethereum": "KRW-ETH",
+}
+
+# Association table
+coin_strategies = sa.Table(
+    "coin_strategies",
+    db.metadata,
+    sa.Column("coin_id", db.Integer, sa.ForeignKey("coin.id"), primary_key=True),
+    sa.Column(
+        "strategy_id", db.Integer, sa.ForeignKey("strategy.id"), primary_key=True
+    ),
+)
+
 
 class MembershipType(enum.Enum):
     BIKE = "bike"
@@ -205,16 +220,12 @@ class User(UserMixin, db.Model):
         return db.session.get(User, int(id))
 
 
-class Strategy(db.Model):
+class Coin(db.Model):
     id: so.Mapped[int] = so.mapped_column(primary_key=True)
     name: so.Mapped[str] = so.mapped_column(
         sa.String(64),
         index=True,
         unique=True,
-    )
-    description: so.Mapped[Optional[str]] = so.mapped_column(
-        sa.String(255),
-        nullable=True,
     )
     # Field to store pickled DataFrame data
     historical_data: so.Mapped[Optional[bytes]] = so.mapped_column(
@@ -227,21 +238,26 @@ class Strategy(db.Model):
         sa.LargeBinary,
         nullable=True,
     )
-
-    # Many-to-many relationship via UserStrategy
-    users: so.Mapped["UserStrategy"] = so.relationship(
-        "UserStrategy",
-        back_populates="strategy",
-        cascade="all, delete-orphan",
+    # one to many with UserStrategy
+    user_strategies: so.Mapped[list["UserStrategy"]] = so.relationship(
+        "UserStrategy",  # Correct model reference
+        back_populates="target_currency",
+        passive_deletes=True,  # Ensure related UserStrategy objects are handled on delete
+    )
+    # many to many with Strategy
+    strategies: so.Mapped[list["Strategy"]] = so.relationship(
+        "Strategy", secondary=coin_strategies, back_populates="coins"
     )
 
     def save_historical_data(self, df: pd.DataFrame):
         """Save the historical data as binary pickle data."""
         # Use df_utils to convert DataFrame to pickle format
         self.historical_data = save_dataframe_as_pickle(df)
-        self.short_historical_data = save_dataframe_as_pickle(df.tail(28000))
+        self.short_historical_data = save_dataframe_as_pickle(
+            df.tail(100000)
+        )  # for like 70 days
         db.session.commit()
-        print(f"Historical data successfully saved to strategy {self.name}.")
+        print(f"Historical data successfully saved to coin {self.name}.")
 
     def get_historical_data(self) -> pd.DataFrame:
         """Retrieve the historical data as a DataFrame."""
@@ -250,7 +266,7 @@ class Strategy(db.Model):
             df = get_dataframe_from_pickle(self.historical_data)
             return df
         else:
-            print(f"No historical data available for strategy {self.name}.")
+            print(f"No historical data available for coin {self.name}.")
             return None
 
     def get_short_historical_data(self) -> pd.DataFrame:
@@ -260,13 +276,13 @@ class Strategy(db.Model):
             df = get_dataframe_from_pickle(self.short_historical_data)
             return df
         else:
-            print(f"No historical data available for strategy {self.name}.")
+            print(f"No historical data available for coin {self.name}.")
             return None
 
     def make_historical_data(self):
         if not self.historical_data:
             # get historical data from the 2021/04/01 every minutes
-            long_df = get_candles()
+            long_df = get_candles(market=tickers[self.name])
         else:
             long_df = get_dataframe_from_pickle(self.historical_data)
 
@@ -282,11 +298,11 @@ class Strategy(db.Model):
 
             # Compare the two naive datetime objects
             if last_time_utc + timedelta(minutes=50) < formatted_now_naive:
-                long_df = get_candles()
+                long_df = get_candles(market=tickers[self.name])
 
         now_minus_1hour = datetime.now(timezone.utc) - timedelta(hours=1)
         now_minus_1hour = now_minus_1hour.strftime("%Y-%m-%d %H:%M:%S")
-        short_df = get_candles(start=now_minus_1hour)
+        short_df = get_candles(market=tickers[self.name], start=now_minus_1hour)
 
         final_df = concat_candles(long_df=long_df, short_df=short_df)
 
@@ -295,7 +311,37 @@ class Strategy(db.Model):
         self.save_historical_data(final_df)
         pass
 
-    def execute_logic_for_user(self, user_strategy, manual_start: bool = False):
+    def __repr__(self):
+        return f"<Coin name={self.name}>"
+
+
+class Strategy(db.Model):
+    id: so.Mapped[int] = so.mapped_column(primary_key=True)
+    name: so.Mapped[str] = so.mapped_column(
+        sa.String(64),
+        index=True,
+        unique=True,
+    )
+    description: so.Mapped[Optional[str]] = so.mapped_column(
+        sa.String(255),
+        nullable=True,
+    )
+
+    # Many-to-many relationship via UserStrategy
+    users: so.Mapped["UserStrategy"] = so.relationship(
+        "UserStrategy",
+        back_populates="strategy",
+        cascade="all, delete-orphan",
+    )
+
+    # many to many with Strategy
+    coins: so.Mapped[list["Coin"]] = so.relationship(
+        "Coin", secondary=coin_strategies, back_populates="strategies"
+    )
+
+    def execute_logic_for_user(
+        self, user_strategy: "UserStrategy", manual_start: bool = False
+    ):
         """The core strategy logic, executed for a specific user."""
         # check if the historical data is updated.
         if not manual_start:
@@ -307,7 +353,9 @@ class Strategy(db.Model):
                 )  # Convert formatted_now to naive if it has timezone info
                 formatted_now_naive = formatted_now.replace(tzinfo=None)
 
-                short_historical_data = self.get_short_historical_data()
+                short_historical_data = (
+                    user_strategy.target_currency.get_short_historical_data()
+                )
                 # Get the last row of the DataFrame
                 last_row = short_historical_data.iloc[-1]
 
@@ -318,14 +366,16 @@ class Strategy(db.Model):
                     print(f"{user_strategy} data update confirmed")
                     break
                 else:
-                    self.make_historical_data()
+                    user_strategy.target_currency.make_historical_data()
                     current_app.logger.info(
                         f"User: {user_strategy.user.username}, no historical data updated. try again."
                     )
         else:
-            short_historical_data = self.get_short_historical_data()
+            short_historical_data = (
+                user_strategy.target_currency.get_short_historical_data()
+            )
             if short_historical_data == None:
-                self.make_historical_data()
+                user_strategy.target_currency.make_historical_data()
 
         try:
             upbit = user_strategy.user.create_upbit_client()
@@ -421,6 +471,9 @@ class UserStrategy(db.Model):
         sa.ForeignKey("strategy.id"),
         nullable=False,
     )
+    coin_id: so.Mapped[int] = so.mapped_column(
+        sa.ForeignKey("coin.id"), nullable=False, default=1
+    )
     active: so.Mapped[bool] = so.mapped_column(
         sa.Boolean,
         default=False,
@@ -439,6 +492,9 @@ class UserStrategy(db.Model):
     strategy: so.Mapped["Strategy"] = so.relationship(
         "Strategy",
         back_populates="users",
+    )
+    target_currency: so.Mapped["Coin"] = so.relationship(
+        "Coin", back_populates="user_strategies"
     )
 
     # Set default _investing_limit to 0, making it private
@@ -459,28 +515,6 @@ class UserStrategy(db.Model):
         default=0,
         nullable=False,
     )
-    # Field to store pickled DataFrame data
-    historical_data_resampled: so.Mapped[bytes] = so.mapped_column(
-        sa.LargeBinary,
-        nullable=True,
-    )
-    ## those are for later save data and showing data
-    # def save_historical_data_resampled(self, df: pd.DataFrame):
-    #     """Save the historical data as binary pickle data."""
-    #     # Use df_utils to convert DataFrame to pickle format
-    #     self.historical_data_resampled = save_dataframe_as_pickle(df)
-    #     db.session.commit()
-    #     print(f"Historical data successfully saved to strategy {self.strategy.name}.")
-
-    # def get_historical_data_resampled(self) -> pd.DataFrame:
-    #     """Retrieve the historical data as a DataFrame."""
-    #     if self.historical_data_resampled:
-    #         # Use df_utils to convert binary pickle data back to a DataFrame
-    #         df = get_dataframe_from_pickle(self.historical_data_resampled)
-    #         return df
-    #     else:
-    #         print(f"No historical data available for strategy {self.strategy.name}.")
-    #         return None
 
     @property
     def investing_limit(self):
@@ -533,7 +567,7 @@ class UserStrategy(db.Model):
 
     def activate(self):
         """activate a strategy and update the user's available balance."""
-        data_ready = self.strategy.get_short_historical_data()
+        data_ready = self.target_currency.get_short_historical_data()
         if data_ready is None:
             # Flash error message directly (if in route context)
             # return redirect(url_for("user.dashboard"))
@@ -557,15 +591,3 @@ class UserStrategy(db.Model):
 
     def __repr__(self):
         return f"<UserStrategy user_id={self.user_id}, strategy_id={self.strategy_id}>"
-
-
-class Coin(db.Model):
-    id: so.Mapped[int] = so.mapped_column(primary_key=True)
-    name: so.Mapped[str] = so.mapped_column(
-        sa.String(64),
-        index=True,
-        unique=True,
-    )
-
-    def __repr__(self):
-        return f"<Coin name={self.name}>"
