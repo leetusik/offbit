@@ -1,15 +1,26 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
+import pandas as pd
+import pytz
 import redis
 import sqlalchemy as sa
 import sqlalchemy.orm as so
-from flask import current_app, flash, redirect, render_template, url_for
+from flask import (
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from flask_login import current_user, login_required
 
 from app import db
 from app.main import bp
-from app.main.forms import EmptyForm, MakeStrategyForm
-from app.models import Strategy, UserStrategy
+from app.main.forms import EmptyForm, MakeStrategyForm, SetBacktestExecutionTimeForm
+from app.models import Coin, Strategy, UserStrategy
+from app.utils.performance_utils import get_backtest, get_performance
 from config import Config
 
 # app = create_app()
@@ -34,6 +45,24 @@ def explain():
 
 @bp.route("/strategies")
 def strategies():
+
+    benchmarks = db.session.scalars(sa.select(Coin)).all()
+    benchmark_data = {}
+    for benchmark in benchmarks:
+        benchmark_24h = redis_client.hget(
+            f"benchmark:{benchmark.id}:performance", "24h"
+        )
+        benchmark_30d = redis_client.hget(
+            f"benchmark:{benchmark.id}:performance", "30d"
+        )
+        benchmark_1y = redis_client.hget(f"benchmark:{benchmark.id}:performance", "1y")
+        benchmark_data[benchmark.id] = {
+            "name": benchmark.name,
+            "24h": benchmark_24h.decode() if benchmark_24h else "N/A",
+            "30d": benchmark_30d.decode() if benchmark_30d else "N/A",
+            "1y": benchmark_1y.decode() if benchmark_1y else "N/A",
+        }
+
     strategies = db.session.scalars(sa.select(Strategy)).all()
     performance_data = {}
     for strategy in strategies:
@@ -71,6 +100,117 @@ def strategies():
         strategies=strategies,
         form=form,
         performance_data=performance_data,
+        benchmark_data=benchmark_data,
+        benchmarks=benchmarks,
+    )
+
+
+@bp.route("/strategy/<strategy_id>", methods=["GET", "POST"])
+def strategy(strategy_id):
+    # Retrieve the strategy object from the database
+    execution_time = session.get("execution_time", None)
+    if execution_time != None:
+        # Convert to a datetime.time object
+        execution_time = datetime.strptime(execution_time, "%H:%M:%S").time()
+    pre_data = {
+        "execution_time": execution_time,
+    }
+    form = SetBacktestExecutionTimeForm(data=pre_data)
+    # form = SetBacktestExecutionTimeForm()
+    strategy = db.first_or_404(sa.select(Strategy).where(Strategy.id == strategy_id))
+
+    # If the form is submitted and valid, pass the execution time as an argument
+    if form.validate_on_submit():
+        execution_time = form.execution_time.data
+        session["execution_time"] = str(form.execution_time.data)
+        # change execution_time to utc #
+        user_timezone = session.get("timezone", "UTC")
+        user_timezone = pytz.timezone(user_timezone)
+        # Create a datetime object for today with the given time
+        local_datetime = datetime.combine(datetime.today(), execution_time)
+
+        # Localize the time to the given timezone
+        localized_time = user_timezone.localize(local_datetime)
+        # Convert to UTC
+        utc_time = localized_time.astimezone(pytz.utc)
+        df = get_backtest(
+            strategy=strategy,
+            execution_time=datetime(1970, 1, 1, utc_time.hour, utc_time.minute),
+        )
+    else:
+        if execution_time != None:
+            execution_time = form.execution_time.data
+
+            user_timezone = session.get("timezone", "UTC")
+            user_timezone = pytz.timezone(user_timezone)
+            # Create a datetime object for today with the given time
+            local_datetime = datetime.combine(datetime.today(), execution_time)
+
+            # Localize the time to the given timezone
+            localized_time = user_timezone.localize(local_datetime)
+            # Convert to UTC
+            utc_time = localized_time.astimezone(pytz.utc)
+            df = get_backtest(
+                strategy=strategy,
+                execution_time=datetime(1970, 1, 1, utc_time.hour, utc_time.minute),
+            )
+        else:
+            df = get_backtest(strategy=strategy)
+
+    # Convert the time_utc column from string to datetime (assumed to be in UTC)
+    df["time_utc"] = pd.to_datetime(df["time_utc"], utc=True)  # Ensure it's tz-aware
+
+    # Handle time range selection before localizing the time to the user's timezone
+    time_range = request.args.get(
+        "range", "all"
+    )  # Get the time range from the URL, default to 'all'
+
+    # Get current UTC time for range filtering
+    now_utc = datetime.now(pytz.UTC)
+
+    if time_range == "30d":
+        start_date = now_utc - timedelta(days=30)
+        df = df[df["time_utc"] >= start_date]
+    elif time_range == "1y":
+        start_date = now_utc - timedelta(days=365)
+        df = df[df["time_utc"] >= start_date]
+    # No need for an "all" case, as that's the default behavior
+
+    # Localize the time to UTC first (as your times are in UTC), then convert to the user's local timezone
+    user_timezone = pytz.timezone(session.get("timezone", "UTC"))
+    df["time_localized"] = df["time_utc"].dt.tz_convert(user_timezone)
+
+    # Format the localized time back to ISO 8601 format for Chart.js
+    times = df["time_localized"].dt.strftime("%Y-%m-%dT%H:%M:%S").tolist()
+
+    cumulative_returns2 = df[
+        "cumulative_returns2"
+    ].tolist()  # Convert cumulative returns to list
+    close_prices = df["close"].tolist()  # Convert close prices to list
+
+    # Remove the first data point if necessary (as in your example)
+    times = times[1:]
+    cumulative_returns2 = cumulative_returns2[1:]
+    close_prices = close_prices[1:]
+
+    # Normalize both datasets to start from 100
+    start_value = 100
+    close_prices_normalized = [
+        price / close_prices[0] * start_value for price in close_prices
+    ]
+    cumulative_returns2_normalized = [
+        ret / cumulative_returns2[0] * start_value for ret in cumulative_returns2
+    ]
+    performance_dict = get_performance(df)
+    # Pass data to the template
+    return render_template(
+        "strategy.html",
+        strategy=strategy,
+        times=times,
+        cumulative_returns2_normalized=cumulative_returns2_normalized,
+        close_prices_normalized=close_prices_normalized,
+        form=form,
+        performance_dict=performance_dict,
     )
 
 
@@ -137,3 +277,13 @@ def notice():
 @bp.route("/faq")
 def faq():
     pass
+
+
+@bp.route("/set_timezone", methods=["POST"])
+@login_required
+def set_timezone():
+    data = request.get_json()
+    timezone = data.get("timezone")
+    # Store the timezone in the session or the current user object
+    session["timezone"] = timezone
+    return "", 204  # Empty response with HTTP status 204 (No Content)

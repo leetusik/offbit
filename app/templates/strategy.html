@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% import "bootstrap_wtf.html" as wtf %}
+{% block styles %}
+    <!-- Load Chart.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0"></script>
+{% endblock %}
+{% block content %}
+    <h1>{{ strategy.name }}</h1>
+    {{ wtf.quick_form(form) }}
+    <!-- Time Range Buttons -->
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-6 text-center">
+                <form method="get"
+                      action="{{ url_for('main.strategy', strategy_id=strategy.id) }}">
+                    <button type="submit" name="range" value="30d" class="btn btn-primary">Last 30 Days</button>
+                    <button type="submit" name="range" value="1y" class="btn btn-primary">Last 1 Year</button>
+                    <button type="submit" name="range" value="all" class="btn btn-primary">All Time</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <canvas id="strategyChart" width="400" height="200"></canvas>
+    <!-- Display Performance Metrics -->
+    <div class="container mt-4">
+        <h2>Performance Metrics</h2>
+        <table class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th>Metric</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>총수익</td>
+                    <td>{{ performance_dict.total_return | round(2) }}</td>
+                </tr>
+                <tr>
+                    <td>연평균수익률</td>
+                    <td>{{ performance_dict.cagr | round(2) }}</td>
+                </tr>
+                <tr>
+                    <td>최대 낙폭</td>
+                    <td>{{ performance_dict.mdd | round(2) }}</td>
+                </tr>
+                <tr>
+                    <td>투자 성공률(승률)</td>
+                    <td>{{ performance_dict.win_rate | round(2) }}</td>
+                </tr>
+                <tr>
+                    <td>손익비(P&L)</td>
+                    <td>{{ performance_dict.gain_loss_ratio }}</td>
+                </tr>
+                <tr>
+                    <td>시장 참여 비율</td>
+                    <td>{{ performance_dict.holding_time_ratio | round(2) }}</td>
+                </tr>
+                <tr>
+                    <td>총 투자일</td>
+                    <td>{{ performance_dict.investing_period }}일</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+{% endblock %}
+{% block script %}
+    <script>
+document.addEventListener("DOMContentLoaded", function () {
+// Get the user's timezone using JavaScript
+const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+const execution_time_label = document.getElementById("execution_time");
+if (execution_time_label) {
+    execution_time_label.innerText = execution_time_label.innerText + ` (시간대: ${timezone})`;
+}
+
+// Send the timezone to the Flask server using an AJAX request (optional, if needed)
+fetch('/my/set_timezone', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ timezone: timezone })
+});
+
+// Use tojson to safely pass the data from Flask to JavaScript
+const strategyTimes = JSON.parse('{{ times | tojson | safe }}');
+const strategyCumulativeReturns2 = JSON.parse('{{ cumulative_returns2_normalized | tojson | safe }}');
+const strategyClosePrices = JSON.parse('{{ close_prices_normalized | tojson | safe }}');
+
+// Setup Chart.js
+const ctx = document.getElementById('strategyChart').getContext('2d');
+const strategyChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: strategyTimes,
+        datasets: [
+            {
+                label: 'Strategy Return (Normalized)',
+                data: strategyCumulativeReturns2,
+                borderColor: 'rgba(75, 192, 192, 1)',
+                borderWidth: 2,
+                fill: false,
+                hitRadius: 10,
+                yAxisID: 'y1',  // Left Y-axis
+                pointRadius: 0,  // Remove the points from the line (set to 0 for no dots)
+                pointHoverRadius: 0  // Remove the hover points as well
+            },
+            {
+                label: 'Close Price (Normalized)',
+                data: strategyClosePrices,
+                borderColor: 'rgba(255, 99, 132, 1)',
+                borderWidth: 2,
+                fill: false,
+                hitRadius: 10,
+                yAxisID: 'y1',  // Left Y-axis (same axis for comparison)
+                pointRadius: 0,  // Remove the points from the line (set to 0 for no dots)
+                pointHoverRadius: 0  // Remove the hover points as well
+            }
+        ]
+    },
+    options: {
+        scales: {
+            x: {
+                type: 'time',
+                time: {
+                    unit: 'day',
+                    stepSize: 1
+                },
+                title: {
+                    display: true,
+                    text: `Time (${timezone})`,  // Update x-axis label with the detected timezone
+                }
+            },
+            y1: {
+                beginAtZero: false,
+                title: {
+                    display: true,
+                    text: 'Normalized Value',
+                },
+                ticks: {
+                    callback: function(value) {
+                        return value.toFixed(2);  // Format with 2 decimal places
+                    }
+                }
+            }
+        }
+    }
+});
+});
+    </script>
+{% endblock %}

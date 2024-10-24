@@ -324,6 +324,8 @@ class Strategy(db.Model):
                     )
         else:
             short_historical_data = self.get_short_historical_data()
+            if short_historical_data == None:
+                self.make_historical_data()
 
         try:
             upbit = user_strategy.user.create_upbit_client()
@@ -555,3 +557,15 @@ class UserStrategy(db.Model):
 
     def __repr__(self):
         return f"<UserStrategy user_id={self.user_id}, strategy_id={self.strategy_id}>"
+
+
+class Coin(db.Model):
+    id: so.Mapped[int] = so.mapped_column(primary_key=True)
+    name: so.Mapped[str] = so.mapped_column(
+        sa.String(64),
+        index=True,
+        unique=True,
+    )
+
+    def __repr__(self):
+        return f"<Coin name={self.name}>"

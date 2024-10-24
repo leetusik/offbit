@@ -2,7 +2,7 @@ import sqlalchemy as sa
 import sqlalchemy.orm as so
 
 from app import create_app, db
-from app.models import Strategy, User, UserStrategy
+from app.models import Coin, Strategy, User, UserStrategy
 
 app = create_app()
 
@@ -16,4 +16,5 @@ def make_shell_context():
         "User": User,
         "Strategy": Strategy,
         "UserStrategy": UserStrategy,
+        "Coin": Coin,
     }

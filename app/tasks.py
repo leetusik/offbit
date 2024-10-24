@@ -21,28 +21,24 @@ def update_strategies_performance():
     strategies = db.session.scalars(sa.select(Strategy)).all()
 
     for strategy in strategies:
-        # Calculate performance metrics based on historical data
-        #  = calculate_performance(
-        #     strategy=strategy, time_period=timedelta(days=16)
-        # )
-        #  = calculate_performance(
-        #     strategy=strategy, time_period=timedelta(days=46)
-        # )
-        performance_24h, performance_30d, performance_1y = calculate_performance(
-            strategy=strategy, time_period=timedelta(days=381)
-        )
-        # print(f"strategy:{strategy.id}:performance", "24h", performance_24h)
-        # print(f"strategy:{strategy.id}:performance", "30d", performance_30d)
-        # print(f"strategy:{strategy.id}:performance", "1y", performance_1y)
-        # Store the performance metrics in Redis, with the strategy ID as the key
+        (
+            performance_24h,
+            performance_30d,
+            performance_1y,
+            benchmark_24h,
+            benchmark_30d,
+            benchmark_1y,
+        ) = calculate_performance(strategy=strategy, time_period=timedelta(days=381))
         last_update = str(datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
-
         redis_client.hset(f"strategy performance check", "last_update", last_update)
         redis_client.hset(f"strategy:{strategy.id}:performance", "24h", performance_24h)
         redis_client.hset(f"strategy:{strategy.id}:performance", "30d", performance_30d)
         redis_client.hset(f"strategy:{strategy.id}:performance", "1y", performance_1y)
+        redis_client.hset(f"benchmark:1:performance", "24h", benchmark_24h)
+        redis_client.hset(f"benchmark:1:performance", "30d", benchmark_30d)
+        redis_client.hset(f"benchmark:1:performance", "1y", benchmark_1y)
 
-        # print(f"Performance metrics updated for strategy {strategy.name}")
+    # print(f"Performance metrics updated for strategy {strategy.name}")
 
 
 @shared_task
@@ -58,7 +54,10 @@ def update_and_execute():
     try:
         update_strategies_historical_data()
         execute_strategies.delay()
-        update_strategies_performance.delay()
+
+        current = datetime.now()
+        if current.minute == 0:
+            update_strategies_performance.delay()
     finally:
         # Ensure the lock is released when the task is done
         lock.release()

@@ -9,9 +9,8 @@
         background: none;
         border: none;
         color: inherit;
-        font-size: 1em; /* Adjust the size of the star if needed */
+        font-size: 1em;
         cursor: pointer;
-        /* padding: 0; */
     }
     .more-tight {
         padding: 0;
@@ -21,21 +20,84 @@
     .hidden_time {
         display: none;
     }
+
+    /* Ensure consistent column widths across both tables */
+    table {
+        width: 100%;
+        table-layout: fixed; /* Ensures consistent column width */
+    }
+
+    /* Define fixed widths for the table columns */
+    th, td {
+        text-align: left;
+        padding: 8px;
+    }
+    
+    /* Set specific widths for each column */
+    .col-id {
+        width: 5%;   /* Adjust as needed */
+    }
+
+    .col-name {
+        width: 25%;  /* Adjust as needed */
+    }
+
+    .col-24h, .col-30d, .col-1y {
+        width: 15%;  /* Adjust as needed */
+    }
+    .strategy-row {
+        cursor: pointer;
+    }
     </style>
 {% endblock %}
 {% block content %}
     <a href="{{ url_for("main.make_strategy") }}">전략 만들기</a>
     <div class="container mt-5">
+        <h1 class="mb-4">벤치마크</h1>
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th scope="col" class="more-tight col-id"></th>
+                    <th scope="col" class="col-id">#</th>
+                    <th scope="col" class="col-name">이름</th>
+                    <th scope="col" class="d-none d-md-table-cell col-24h">24h %</th>
+                    <th scope="col" class="col-30d">30d %</th>
+                    <th scope="col" class="d-none d-md-table-cell col-1y">1y %</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for benchmark in benchmarks %}
+                    <tr data-bs-toggle="tooltip"
+                        title="마지막 업데이트"
+                        id="tooltip{{ benchmark.id }}">
+                        <th scope="row" class="more-tight"></th>
+                        <td class="col-id">{{ benchmark.id }}</td>
+                        <td class="col-name">{{ benchmark.name }}</td>
+                        <td class="d-none d-md-table-cell col-24h">
+                            <span class="{{ 'text-danger' if '-' in benchmark_data[benchmark.id]["24h"] else "text-success" }}">{{ benchmark_data[benchmark.id]["24h"] }}</span>
+                        </td>
+                        <td class="col-30d">
+                            <span class="{{ 'text-danger' if '-' in benchmark_data[benchmark.id]["30d"] else "text-success" }}">{{ benchmark_data[benchmark.id]["30d"] }}</span>
+                        </td>
+                        <td class="d-none d-md-table-cell col-1y">
+                            <span class="{{ 'text-danger' if '-' in benchmark_data[benchmark.id]["1y"] else "text-success" }}">{{ benchmark_data[benchmark.id]["1y"] }}</span>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="container mt-5">
         <h1 class="mb-4">전략랭킹</h1>
         <table class="table table-hover align-middle">
             <thead>
                 <tr>
-                    <th scope="col" class="more-tight"></th>
-                    <th scope="col">#</th>
-                    <th scope="col">이름</th>
-                    <th scope="col" class="d-none d-md-table-cell">24h %</th>
-                    <th scope="col">30d %</th>
-                    <th scope="col" class="d-none d-md-table-cell">1y %</th>
+                    <th scope="col" class="more-tight col-id"></th>
+                    <th scope="col" class="col-id">#</th>
+                    <th scope="col" class="col-name">이름</th>
+                    <th scope="col" class="d-none d-md-table-cell col-24h">24h %</th>
+                    <th scope="col" class="col-30d">30d %</th>
+                    <th scope="col" class="d-none d-md-table-cell col-1y">1y %</th>
                 </tr>
             </thead>
             <tbody>
@@ -45,7 +107,9 @@
                     </p>
                     <tr data-bs-toggle="tooltip"
                         title="마지막 업데이트"
-                        id="tooltip{{ strategy.id }}">
+                        id="tooltip{{ strategy.id }}"
+                        class="strategy-row"
+                        onclick="window.location.href='{{ url_for("main.strategy", strategy_id=strategy.id) }}'">
                         <th scope="row" class="more-tight">
                             {% if current_user.is_authenticated and not current_user.is_my_strategy(strategy) %}
                                 <form action="{{ url_for('main.to_my_strategies', name=strategy.name) }}"
@@ -61,15 +125,15 @@
                                 </form>
                             {% endif %}
                         </th>
-                        <td>{{ strategy.id }}</td>
-                        <td>{{ strategy.name }}</td>
-                        <td class="d-none d-md-table-cell">
+                        <td class="col-id">{{ strategy.id }}</td>
+                        <td class="col-name">{{ strategy.name }}</td>
+                        <td class="d-none d-md-table-cell col-24h">
                             <span class="{{ 'text-danger' if '-' in performance_data[strategy.id]["24h"] else "text-success" }}">{{ performance_data[strategy.id]["24h"] }}</span>
                         </td>
-                        <td>
+                        <td class="col-30d">
                             <span class="{{ 'text-danger' if '-' in performance_data[strategy.id]["30d"] else "text-success" }}">{{ performance_data[strategy.id]["30d"] }}</span>
                         </td>
-                        <td class="d-none d-md-table-cell">
+                        <td class="d-none d-md-table-cell col-1y">
                             <span class="{{ 'text-danger' if '-' in performance_data[strategy.id]["1y"] else "text-success" }}">{{ performance_data[strategy.id]["1y"] }}</span>
                         </td>
                     </tr>
