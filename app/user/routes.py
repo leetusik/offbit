@@ -8,7 +8,7 @@ from flask import flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, logout_user
 
 from app import db
-from app.models import Strategy, User, UserStrategy
+from app.models import Coin, Strategy, User, UserStrategy
 from app.user import bp
 from app.user.forms import (
     EmptyForm,
@@ -111,7 +111,7 @@ def dashboard():
     form_e = EmptyForm()
     # Iterate over each strategy and create a form for each one
     for user_strategy in user_strategies:
-        form = StartUserStrategyForm()
+        form = StartUserStrategyForm(user_strategy=user_strategy)
 
         # Set the hidden field with the user strategy ID
         form.strategy_id.data = user_strategy.id
@@ -172,15 +172,20 @@ def set_strategy(name):
         .where(UserStrategy.user_id == current_user.id)
     )
     pre_data = {
+        "currency": user_strategy.target_currency.name,
         "investing_limit": user_strategy.investing_limit,
         "execution_time": user_strategy.execution_time,
     }
 
-    form = SetUserStrategyForm(data=pre_data)
+    form = SetUserStrategyForm(data=pre_data, strategy=user_strategy.strategy)
 
     if form.validate_on_submit():
         investing_limit = form.investing_limit.data
         execution_time = form.execution_time.data
+        target_currency = form.currency.data
+        target_currency = db.session.scalar(
+            sa.select(Coin).where(Coin.name == target_currency)
+        )
 
         # change execution_time to utc #
         user_timezone = session.get("timezone", "UTC")
@@ -194,8 +199,10 @@ def set_strategy(name):
         utc_time = localized_time.astimezone(pytz.utc)
         # change execution_time to utc #
 
+        user_strategy.target_currency = target_currency
         user_strategy.investing_limit = investing_limit
         user_strategy.set_execution_time(str(utc_time.time()))
+
         flash(f"{user_strategy.strategy.name} 전략 투자 설정이 완료되었습니다.")
         return redirect(url_for("user.dashboard"))
     return render_template(
@@ -231,6 +238,9 @@ def remove_from_strategies(name):
 
 @bp.route("/no_setting_no_start", methods=["POST"])
 def no_setting_no_start():
+    if current_user.open_api_key_access_upbit == None:
+        flash("투자를 시작하기 위해 오픈 API 키를 연동해주세요.")
+        return redirect(url_for("user.user_info"))
     flash("투자를 시작하기 위해서 투자 세팅을 완료해주세요.")
     return redirect(url_for("user.dashboard"))
 

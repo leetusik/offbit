@@ -87,7 +87,12 @@
                             </form>
                         </th>
                         <td>{{ user_strategy.strategy.id }}</td>
-                        <td>{{ user_strategy.strategy.name }}</td>
+                        <td>
+                            <div>
+                                <p class="mb-1">{{ user_strategy.strategy.name }}</p>
+                                <p class="text-muted small">매매 종목: {{ user_strategy.target_currency.name }}</p>
+                            </div>
+                        </td>
                         <td class="d-none d-md-table-cell">
                             {% if user_strategy.investing_limit %}
                                 <span>{{ format_integer(user_strategy.investing_limit) }}</span>
@@ -111,7 +116,7 @@
                                 {% if user_strategy.holding_position %}
                                     <div>
                                         <p class="mb-1">매도대기</p>
-                                        <p class="text-muted small">({{ user_strategy.sell_needed }} BTC)</p>
+                                        <p class="text-muted small">({{ user_strategy.sell_needed }} {{ user_strategy.target_currency.name }})</p>
                                     </div>
                                 {% else %}
                                     <div>
@@ -122,7 +127,7 @@
                             {% endif %}
                         </td>
                         <td>
-                            {% if user_strategy.investing_limit != 0 and user_strategy.execution_time != None and not user_strategy.active %}
+                            {% if user_strategy.investing_limit != 0 and user_strategy.execution_time != None and not user_strategy.active and current_user.open_api_key_access_upbit != None %}
                                 <a href="#"
                                    class="btn btn-primary"
                                    data-bs-toggle="modal"

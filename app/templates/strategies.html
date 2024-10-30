@@ -35,7 +35,7 @@
     
     /* Set specific widths for each column */
     .col-id {
-        width: 5%;   /* Adjust as needed */
+        width: 8%;   /* Adjust as needed */
     }
 
     .col-name {
@@ -51,7 +51,7 @@
     </style>
 {% endblock %}
 {% block content %}
-    <a href="{{ url_for("main.make_strategy") }}">전략 만들기</a>
+    {% if current_user.admin %}<a href="{{ url_for("main.make_strategy") }}">전략 만들기</a>{% endif %}
     <div class="container mt-5">
         <h1 class="mb-4">벤치마크</h1>
         <table class="table table-hover align-middle">
@@ -92,18 +92,26 @@
     </div>
     <div class="container mt-5">
         <h1 class="mb-4">전략랭킹</h1>
-        <table class="table table-hover align-middle">
+        <table class="table table-hover align-middle" id="strategyTable">
             <thead>
                 <tr>
                     <th scope="col" class="more-tight col-id"></th>
-                    <th scope="col" class="col-id">#</th>
+                    <th scope="col" class="col-id" data-sort="index">
+                        <span id="arrow-index"></span> #
+                    </th>
                     <th scope="col" class="col-name">이름</th>
-                    <th scope="col" class="d-none d-md-table-cell col-24h">24h %</th>
-                    <th scope="col" class="col-30d">30d %</th>
-                    <th scope="col" class="d-none d-md-table-cell col-1y">1y %</th>
+                    <th scope="col" class="d-none d-md-table-cell col-24h" data-sort="24h">
+                        <span id="arrow-24h"></span> 24h %
+                    </th>
+                    <th scope="col" class="col-30d" data-sort="30d">
+                        <span id="arrow-30d"></span> 30d %
+                    </th>
+                    <th scope="col" class="d-none d-md-table-cell col-1y" data-sort="1y">
+                        <span id="arrow-1y"></span> 1y %
+                    </th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="strategyBody">
                 {% for strategy in strategies %}
                     <p class="hidden_time" id="strategy{{ strategy.id }}">
                         {{ moment(strategy_performance_data[strategy.id]['last_update']).format('YYYY-MM-DD HH:mm:ss') }}
@@ -216,6 +224,47 @@
                     new bootstrap.Tooltip(tooltipElement);
                 }
             }
+        });
+        
+       // Sorting functionality
+        const strategyTable = document.getElementById("strategyTable");
+        const strategyBody = document.getElementById("strategyBody");
+        let sortOrder = { "index": "asc", "24h": "desc", "30d": "desc", "1y": "desc" }; // Default orders
+
+        strategyTable.querySelectorAll("[data-sort]").forEach(header => {
+            header.addEventListener("click", function () {
+                const column = this.getAttribute("data-sort");
+                const order = sortOrder[column] === "asc" ? "desc" : "asc";
+                sortOrder[column] = order;
+
+                // Sort rows based on the selected column and order
+                const rows = Array.from(strategyBody.querySelectorAll("tr"));
+                rows.sort((a, b) => {
+                    let aValue, bValue;
+
+                    if (column === "index") {
+                        // Parse the index column as an integer for sorting
+                        aValue = parseInt(a.querySelector(".col-id").innerText) || 0;
+                        bValue = parseInt(b.querySelector(".col-id").innerText) || 0;
+                    } else {
+                        // Parse other columns as floats for percentage-based sorting
+                        aValue = parseFloat(a.querySelector(`.col-${column}`).innerText) || 0;
+                        bValue = parseFloat(b.querySelector(`.col-${column}`).innerText) || 0;
+                    }
+
+                    return order === "asc" ? aValue - bValue : bValue - aValue;
+                });
+
+                // Remove existing rows and append sorted rows
+                strategyBody.innerHTML = "";
+                rows.forEach(row => strategyBody.appendChild(row));
+
+                // Clear all sorting arrows
+                strategyTable.querySelectorAll("[id^='arrow-']").forEach(arrow => arrow.innerText = "");
+
+                // Set arrow on the selected column
+                document.getElementById(`arrow-${column}`).innerText = order === "asc" ? "↑" : "↓";
+            });
         });
     });
     </script>

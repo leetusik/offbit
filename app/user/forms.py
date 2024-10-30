@@ -73,12 +73,17 @@ class SetAPIKeyForm(FlaskForm):
 
 
 class SetUserStrategyForm(FlaskForm):
+    currency = SelectField(
+        "매매 종목 선택",
+        choices=[],  # This will be populated dynamically
+        validators=[DataRequired(message="매매 종목을 선택해주세요.")],
+    )
     investing_limit = IntegerField(
         "전략 투자금 한도",
         validators=[
             DataRequired(),
             NumberRange(
-                min=10000, message="투자금은 10,000원 이상부터 설정 가능합니다."
+                min=100000, message="투자금은 100,000원 이상부터 설정 가능합니다."
             ),
         ],
     )
@@ -88,6 +93,12 @@ class SetUserStrategyForm(FlaskForm):
         validators=[DataRequired(message="Execution time is required")],
     )
     submit = SubmitField("Set Strategy")
+
+    def __init__(self, *args, strategy=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if strategy:
+            # Populate currency choices with available coins in strategy
+            self.currency.choices = [(coin.name, coin.name) for coin in strategy.coins]
 
 
 class StartUserStrategyForm(FlaskForm):
@@ -100,6 +111,23 @@ class StartUserStrategyForm(FlaskForm):
     )
     coin_amount = FloatField("보유한 코인 수량", validators=[Optional()])
     submit = SubmitField("투자 시작하기")
+
+    def __init__(self, *args, user_strategy=None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Check if user_strategy is provided and has the expected structure
+        if (
+            user_strategy
+            and hasattr(user_strategy, "target_currency")
+            and hasattr(user_strategy.target_currency, "name")
+        ):
+            # Set the currency based on the user_strategy
+            self.currency = user_strategy.target_currency.name
+            # Update the label of coin_amount to include currency
+            self.coin_amount.label.text = f"보유한 코인 수량 ({self.currency})"
+        else:
+            # For debugging: print a message if user_strategy or its attributes are missing
+            print("user_strategy or target_currency.name not found in provided data.")
 
 
 class EmptyForm(FlaskForm):

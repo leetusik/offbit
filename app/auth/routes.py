@@ -29,7 +29,6 @@ def login():
             flash("유효하지 않은 이메일 혹은 비밀번호 입니다")
             return redirect(url_for("auth.login"))
         login_user(user, remember=form.remember_me.data)
-        user.update_available()
         next_page = request.args.get("next")
         if not next_page or urlsplit(next_page).netloc != "":
             next_page = url_for("main.index")
@@ -45,7 +44,6 @@ def register():
     if form.validate_on_submit():
         user = User(username=form.username.data, email=form.email.data)
         user.set_password(form.password.data)
-        user.update_available()
         db.session.add(user)
         db.session.commit()
         flash("축하합니다, 가입에 성공했습니다!")

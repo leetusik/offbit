@@ -67,9 +67,13 @@ def strategies():
         coin_performance_data[coin.id] = {
             "name": coin.name,
             "last_update": last_update_datetime if last_update_str else "N/A",
-            "24h": performance_24h.decode() if performance_24h else "N/A",
-            "30d": performance_30d.decode() if performance_30d else "N/A",
-            "1y": performance_1y.decode() if performance_1y else "N/A",
+            "24h": (
+                f"{float(performance_24h.decode()):.2f}" if performance_24h else "N/A"
+            ),
+            "30d": (
+                f"{float(performance_30d.decode()):.2f}" if performance_30d else "N/A"
+            ),
+            "1y": f"{float(performance_1y.decode()):.2f}" if performance_1y else "N/A",
         }
 
     strategies = db.session.scalars(sa.select(Strategy)).all()
@@ -98,10 +102,16 @@ def strategies():
         strategy_performance_data[strategy.id] = {
             "name": strategy.name,
             "last_update": last_update_datetime if last_update_str else "N/A",
-            "24h": performance_24h.decode() if performance_24h else "N/A",
-            "30d": performance_30d.decode() if performance_30d else "N/A",
-            "1y": performance_1y.decode() if performance_1y else "N/A",
+            "24h": (
+                f"{float(performance_24h.decode()):.2f}" if performance_24h else "N/A"
+            ),
+            "30d": (
+                f"{float(performance_30d.decode()):.2f}" if performance_30d else "N/A"
+            ),
+            "1y": f"{float(performance_1y.decode()):.2f}" if performance_1y else "N/A",
         }
+        # print(strategy.id)
+        # print(type(float(strategy_performance_data[strategy.id]["24h"])))
 
     form = EmptyForm()
 
@@ -226,7 +236,7 @@ def strategy(strategy_id):
     ]
     performance_dict = get_performance(df)
     # Pass data to the template
-    # df.to_csv("temp.csv")
+    df.to_csv("temp.csv")
     return render_template(
         "strategy.html",
         strategy=strategy,
@@ -244,6 +254,9 @@ def make_strategy():
     form = MakeStrategyForm()
     if form.validate_on_submit():
         strategy = Strategy(name=form.name.data, description=form.description.data)
+        coins = form.coins.data
+        for coin in coins:
+            strategy.coins.append(coin)
         db.session.add(strategy)
         db.session.commit()
         return redirect(url_for("main.strategies"))

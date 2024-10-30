@@ -2,7 +2,9 @@
 
 ## todos
 
-- strategy
+- user_strategy
+
+- strategy - 전략 코인이나 전략 코인 수정은 어드민 페이지에서 해야하는데 나중에 만들자.
 
   1. 퍼포먼스 sorting 구현 (later)
   2. 백테스트 보여주는 strategy 개별 페이지 구현. (done)
@@ -13,7 +15,7 @@
      4. 투자 성공률(승률)
      5. 손익비
      6. 시장 참여 비율
-  4. ma 전략 하나 만들어서 올리기
+  4. ma 전략 하나 만들어서 올리기 (done)
   5. 전략 만들기는 어드민만 보이게 하기.
 
 - login
@@ -42,6 +44,13 @@
      or config["secret_key"]로 비대칭 키 대신하기(비대칭키가 필요 없을 것 같음)
 
 ## did these
+
+- user_strategy
+
+  1. add coin selection.
+     add coin selection at form
+     show selected coin at dashboard list
+     can be changed by 투자 설정
 
 - investing
 

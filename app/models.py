@@ -62,6 +62,11 @@ class User(UserMixin, db.Model):
         index=True,
         unique=True,
     )
+    admin: so.Mapped[bool] = so.mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+    )
     password_hash: so.Mapped[Optional[str]] = so.mapped_column(sa.String(256))
     open_api_key_access_upbit: so.Mapped[Optional[bytes]] = so.mapped_column(
         sa.LargeBinary, nullable=True
@@ -374,14 +379,16 @@ class Strategy(db.Model):
             short_historical_data = (
                 user_strategy.target_currency.get_short_historical_data()
             )
-            if short_historical_data == None:
+            if short_historical_data is None or short_historical_data.empty:
                 user_strategy.target_currency.make_historical_data()
 
         try:
             upbit = user_strategy.user.create_upbit_client()
             # Fetch the initial balance to check for unexpected changes
             if user_strategy.holding_position:
-                coin_balance: float = upbit.get_balance("KRW-BTC")
+                coin_balance: float = upbit.get_balance(
+                    tickers[user_strategy.target_currency.name]
+                )
                 sell_needed: float = min(coin_balance, user_strategy.sell_needed)
                 print(sell_needed)
             else:
@@ -397,12 +404,15 @@ class Strategy(db.Model):
                 user_strategy.execution_time,
                 user_strategy.holding_position,
                 short_historical_data,
+                manual_start=manual_start,
             )
             # condition = "buy"
             print(f"condition: {condition}")
 
             if condition == "buy":
-                buy = upbit.buy_market_order("KRW-BTC", buy_needed)
+                buy = upbit.buy_market_order(
+                    tickers[user_strategy.target_currency.name], buy_needed
+                )
                 # get order data
                 order = upbit.get_order(buy["uuid"])
                 trades = order.get("trades")
@@ -420,7 +430,9 @@ class Strategy(db.Model):
                 db.session.commit()
 
             elif condition == "sell":
-                sell = upbit.sell_market_order("KRW-BTC", sell_needed)
+                sell = upbit.sell_market_order(
+                    tickers[user_strategy.target_currency.name], sell_needed
+                )
                 order = upbit.get_order(sell["uuid"])
                 trades = order.get("trades")
                 while not trades:
@@ -437,7 +449,7 @@ class Strategy(db.Model):
 
                 sell_price = round((krw_total + fee) / executed_volume)
 
-                user_strategy.sell_needed = None
+                user_strategy.sell_needed = 0
                 user_strategy.holding_position = False
 
                 db.session.commit()
@@ -569,6 +581,7 @@ class UserStrategy(db.Model):
         """activate a strategy and update the user's available balance."""
         data_ready = self.target_currency.get_short_historical_data()
         if data_ready is None:
+
             # Flash error message directly (if in route context)
             # return redirect(url_for("user.dashboard"))
             return (False, f"no data")
