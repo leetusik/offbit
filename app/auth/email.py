@@ -18,3 +18,19 @@ def send_password_reset_email(user):
             user=user,
         ),
     )
+
+
+def send_registration_verification(email, verification_code):
+    send_email(
+        "[Offbit] 회원가입",
+        sender=current_app.config["ADMINS"][0],
+        recipients=[email],
+        text_body=render_template(
+            "email/register_verification.txt",
+            code=verification_code,
+        ),
+        html_body=render_template(
+            "email/register_verification.html",
+            code=verification_code,
+        ),
+    )

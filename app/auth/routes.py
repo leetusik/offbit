@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+import random
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 import sqlalchemy as sa
@@ -7,7 +8,7 @@ from flask_login import current_user, login_user, logout_user
 
 from app import db
 from app.auth import bp
-from app.auth.email import send_password_reset_email
+from app.auth.email import send_password_reset_email, send_registration_verification
 from app.auth.forms import (
     LoginForm,
     RegistrationForm,
@@ -40,14 +41,37 @@ def login():
 def register():
     if current_user.is_authenticated:
         return redirect(url_for("main.index"))
+
+    session.pop("verification_code", None)
+    session.pop("verification_code_expiration", None)
+    session.pop("email", None)
+    session.pop("username", None)
+    session.pop("password", None)
+
     form = RegistrationForm()
+    # Step 1: Initial registration form submission
     if form.validate_on_submit():
-        user = User(username=form.username.data, email=form.email.data)
-        user.set_password(form.password.data)
-        db.session.add(user)
-        db.session.commit()
-        flash("축하합니다, 가입에 성공했습니다!")
-        return redirect(url_for("auth.login"))
+        # Generate a 6-digit code and set an expiration time (e.g., 5 minutes from now)
+        user = db.session.scalar(sa.select(User).where(User.email == form.email.data))
+        if user:
+            flash("해당 이메일은 이미 사용중입니다.")
+            redirect(url_for("auth.login"))
+        verification_code = random.randint(100000, 999999)
+        session["verification_code"] = verification_code
+        session["verification_code_expiration"] = datetime.now(
+            timezone.utc
+        ) + timedelta(minutes=5)
+        session["email"] = form.email.data  # Store email in session temporarily
+        session["username"] = form.username.data  # Store email in session temporarily
+        session["password"] = form.password.data  # Store email in session temporarily
+
+        # Send the verification code to the user's email address
+        send_registration_verification(form.email.data, verification_code)
+        flash("인증 코드가 이메일로 전송되었습니다. 이메일을 확인해주세요.", "info")
+
+        # Redirect to the verification step
+        return redirect(url_for("auth.verify_email"))
+
     return render_template("auth/register.html", title="가입하기", form=form)
 
 
@@ -143,3 +167,59 @@ def reset_password():
 def logout():
     logout_user()
     return redirect(url_for("main.index"))
+
+
+@bp.route("/verify_email", methods=["GET", "POST"])
+def verify_email():
+    form = VerificationCodeForm()
+    if form.validate_on_submit():
+        # Check if the code matches and is not expired
+        stored_code = session.get("verification_code")
+        expiration = session.get("verification_code_expiration")
+        email = session.get("email")
+
+        if not stored_code or not expiration or not email:
+            flash("인증 절차가 만료되었습니다. 다시 시도해주세요.", "danger")
+            return redirect(url_for("auth.register"))
+
+        if datetime.now(timezone.utc) > expiration:
+            flash("인증 코드가 만료되었습니다. 다시 시도해주세요.", "danger")
+            session.pop("verification_code", None)
+            session.pop("verification_code_expiration", None)
+            return redirect(url_for("auth.register"))
+
+        if form.code.data == str(stored_code):
+            # Proceed with creating the user
+            user = User(username=session["username"], email=email)
+            user.set_password(session["password"])
+            db.session.add(user)
+            db.session.commit()
+
+            flash("이메일 인증에 성공했습니다! 가입이 완료되었습니다.", "success")
+            # Clear the session variables
+            session.pop("verification_code", None)
+            session.pop("verification_code_expiration", None)
+            session.pop("email", None)
+            return redirect(url_for("auth.login"))
+        else:
+            flash("잘못된 인증 코드입니다.", "danger")
+
+    return render_template("auth/verify_email.html", title="이메일 인증", form=form)
+
+
+@bp.route("/resend_code", methods=["POST"])
+def resend_code():
+    # Check if the email is stored in the session
+    if "email" not in session:
+        flash("세션이 만료되었습니다. 다시 등록을 시도해주세요.", "danger")
+        return redirect(url_for("auth.register"))
+
+    # Generate a new 6-digit code and set a new expiration time
+    verification_code = random.randint(100000, 999999)
+    session["verification_code"] = verification_code
+    session["verification_code_expiration"] = datetime.now() + timedelta(minutes=5)
+
+    # Resend the verification code to the user's email
+    send_registration_verification(session["email"], verification_code)
+    flash("인증 코드가 다시 전송되었습니다. 이메일을 확인해주세요.", "info")
+    return redirect(url_for("auth.verify_email"))

@@ -24,8 +24,10 @@ Flask-Migrate==4.0.7
 Flask-Moment==1.0.6
 Flask-SQLAlchemy==3.1.1
 Flask-WTF==1.2.1
+flower==2.0.1
 html-tag-names==0.1.2
 html-void-elements==0.1.0
+humanize==4.11.0
 idna==3.10
 itsdangerous==2.2.0
 Jinja2==3.1.4
@@ -39,6 +41,7 @@ numpy==2.1.2
 packaging==24.1
 pandas==2.2.3
 pathspec==0.12.1
+prometheus_client==0.21.0
 prompt_toolkit==3.0.48
 pycparser==2.22
 PyJWT==2.9.0
@@ -52,6 +55,7 @@ regex==2024.9.11
 requests==2.32.3
 six==1.16.0
 SQLAlchemy==2.0.35
+tornado==6.4.1
 tqdm==4.66.5
 typing_extensions==4.12.2
 tzdata==2024.2
@@ -61,3 +65,4 @@ wcwidth==0.2.13
 websockets==13.1
 Werkzeug==3.0.4
 WTForms==3.1.2
+WTForms-SQLAlchemy==0.4.1

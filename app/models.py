@@ -1,4 +1,5 @@
 import enum
+import hashlib
 import random
 import re
 import time
@@ -24,7 +25,7 @@ from app.utils.crypto_utils import decrypt_api_key, encrypt_api_key
 from app.utils.df_utils import get_dataframe_from_pickle, save_dataframe_as_pickle
 from app.utils.formatter import format_integer
 from app.utils.handle_candle import concat_candles, get_candles
-from app.utils.key_manager import load_private_key, load_public_key
+from app.utils.key_manager import get_fernet
 from app.utils.trading_conditions import get_condition
 
 tickers = {
@@ -76,6 +77,9 @@ class User(UserMixin, db.Model):
     )
     open_api_key_expiration: so.Mapped[Optional[datetime]] = so.mapped_column(
         sa.DateTime
+    )
+    open_api_key_access_upbit_hash: so.Mapped[Optional[bytes]] = so.mapped_column(
+        sa.LargeBinary, nullable=True
     )
     verification_code: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer)
     verification_code_expiration: so.Mapped[Optional[datetime]] = so.mapped_column(
@@ -137,23 +141,21 @@ class User(UserMixin, db.Model):
         self, api_key_access: str, api_key_secret: str, expiration_date
     ):
         """Encrypt and store the Upbit API key."""
-        public_key = load_public_key(current_app.config["PUBLIC_KEY_PATH"])
-        self.open_api_key_access_upbit = encrypt_api_key(public_key, api_key_access)
-        self.open_api_key_secret_upbit = encrypt_api_key(public_key, api_key_secret)
+        fernet = get_fernet(current_app)
+        self.open_api_key_access_upbit = fernet.encrypt(api_key_access.encode())
+        self.open_api_key_secret_upbit = fernet.encrypt(api_key_secret.encode())
         self.open_api_key_expiration = expiration_date
+
+        # Hash the access key and store it
+        self.open_api_key_access_upbit_hash = self.hash_api_key(api_key_access)
 
     def get_open_api_key(self) -> str:
         """Decrypt and retrieve the Upbit API key."""
-        private_key = load_private_key(current_app.config["PRIVATE_KEY_PATH"])
-        print(current_app.config["PRIVATE_KEY_PATH"])
+        fernet = get_fernet(current_app)
         if self.open_api_key_access_upbit and self.open_api_key_secret_upbit:
             return (
-                decrypt_api_key(private_key, self.open_api_key_access_upbit).decode(
-                    "utf-8"
-                ),
-                decrypt_api_key(private_key, self.open_api_key_secret_upbit).decode(
-                    "utf-8"
-                ),
+                fernet.decrypt(self.open_api_key_access_upbit).decode("utf-8"),
+                fernet.decrypt(self.open_api_key_secret_upbit).decode("utf-8"),
             )
         return None
 
@@ -219,6 +221,11 @@ class User(UserMixin, db.Model):
             )
             is not None
         )
+
+    @staticmethod
+    def hash_api_key(api_key: str) -> bytes:
+        """Return a hash of the API key."""
+        return hashlib.sha256(api_key.encode()).digest()
 
     @login.user_loader
     def load_user(id):

@@ -61,6 +61,21 @@ def set_api_key():
             api_key_secret = form.api_key_secret.data
             expiration_date = form.expiration.data
             # Update the current user's API key and expiration date
+            # Hash the access key for comparison
+            access_key_hash = User.hash_api_key(api_key_access)
+
+            # Check if the hashed API key is already in use by another account
+            existing_user = db.session.scalar(
+                sa.select(User).where(
+                    (User.open_api_key_access_upbit_hash == access_key_hash)
+                    & (User.id != current_user.id)  # Ensure it’s not the current user
+                )
+            )
+
+            if existing_user:
+                flash("이 API 키는 이미 다른 계정에서 사용 중입니다.", "danger")
+                return redirect(url_for("user.set_api_key"))
+
             current_user.set_open_api_key(
                 api_key_access=api_key_access,
                 api_key_secret=api_key_secret,
@@ -280,6 +295,20 @@ def set_timezone():
 @bp.route("/unset_api_key", methods=["POST"])
 @login_required
 def unset_api_key():
+
+    # Check if the current user has any active strategies
+    active_strategies = db.session.scalars(
+        sa.select(UserStrategy).where(
+            UserStrategy.user_id == current_user.id, UserStrategy.active.is_(True)
+        )
+    ).all()
+
+    if active_strategies:
+        flash(
+            "활성화된 전략이 있습니다. API 키를 해제하기 전에 모든 전략을 비활성화하세요.",
+            "danger",
+        )
+        return redirect(url_for("user.user_info"))
     # Unset the API key fields for the current user
     current_user.open_api_key_access_upbit = None
     current_user.open_api_key_secret_upbit = None
