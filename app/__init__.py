@@ -65,6 +65,7 @@ def create_app(config_class=Config):
                 {"app.tasks.update_coins_historical_data": {"queue": "offbit"}},
                 {"app.tasks.update_strategies_performance": {"queue": "offbit"}},
                 {"app.tasks.update_coins_performance": {"queue": "offbit"}},
+                {"app.tasks.send_async_email": {"queue": "offbit"}},
             ],
         ),
     )

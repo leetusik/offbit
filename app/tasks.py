@@ -4,8 +4,9 @@ import redis
 import sqlalchemy as sa
 from celery import shared_task
 from flask import current_app
+from flask_mail import Message
 
-from app import create_app, db
+from app import create_app, db, mail
 from app.models import Coin, Strategy, UserStrategy
 from app.utils.performance_utils import (
     calculate_coin_performance,
@@ -17,6 +18,17 @@ app = create_app()
 with app.app_context():
     REDIS_URL = current_app.config["REDIS_URL"]
     redis_client = redis.StrictRedis.from_url(REDIS_URL)
+
+
+@shared_task
+def send_async_email(subject, sender, recipients, text_body, html_body):
+    """Background task to send an email with Celery."""
+    msg = Message(subject, sender=sender, recipients=recipients)
+    msg.body = text_body
+    msg.html = html_body
+
+    with app.app_context():
+        mail.send(msg)
 
 
 @shared_task
