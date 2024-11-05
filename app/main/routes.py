@@ -237,9 +237,12 @@ def strategy(strategy_id):
     performance_dict = get_performance(df)
     # Pass data to the template
     # df.to_csv("temp.csv")
+    sorted_coins = sorted(strategy.coins, key=lambda coin: coin.id)
+
     return render_template(
         "strategy.html",
         strategy=strategy,
+        sorted_coins=sorted_coins,
         times=times,
         cumulative_returns2_normalized=cumulative_returns2_normalized,
         close_prices_normalized=close_prices_normalized,

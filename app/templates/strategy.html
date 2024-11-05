@@ -32,7 +32,7 @@
         <div class="row justify-content-center">
             <div class="col-md-6 text-center">
                 <form method="get" id="coinForm">
-                    {% for coin in strategy.coins %}
+                    {% for coin in sorted_coins %}
                         <button type="button"
                                 onclick="submitWithParam('coin', '{{ coin.name }}')"
                                 class="btn btn-primary">{{ coin.name }}</button>
