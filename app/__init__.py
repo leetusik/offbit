@@ -112,11 +112,13 @@ def create_app(config_class=Config):
 
         if not os.path.exists("logs"):
             os.mkdir("logs")
-        file_handler = RotatingFileHandler(
-            "logs/offbit.log",
-            maxBytes=10240,
-            backupCount=10,
-        )
+        # file_handler = RotatingFileHandler(
+        #     "logs/offbit.log",
+        #     maxBytes=10240,
+        #     backupCount=10,
+        # )
+        file_handler = logging.FileHandler("/app/logs/offbit.log")
+
         file_handler.setFormatter(
             logging.Formatter(
                 "%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]"

@@ -236,7 +236,7 @@ def strategy(strategy_id):
     ]
     performance_dict = get_performance(df)
     # Pass data to the template
-    df.to_csv("temp.csv")
+    # df.to_csv("temp.csv")
     return render_template(
         "strategy.html",
         strategy=strategy,
