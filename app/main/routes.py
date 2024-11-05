@@ -141,11 +141,11 @@ def strategy(strategy_id):
 
     # get selected_coin
     selected_coin = request.args.get("coin")  # No need for a default value here
-
+    sorted_coins = sorted(strategy.coins, key=lambda coin: coin.id)
     # Check if the selected coin is provided or if it's not in the strategy's coins
     if selected_coin is None:
-        selected_coin = strategy.coins[0].name  # Set to the first coin if not provided
-    elif selected_coin not in [coin.name for coin in strategy.coins]:
+        selected_coin = sorted_coins[0].name  # Set to the first coin if not provided
+    elif selected_coin not in [coin.name for coin in sorted_coins]:
         abort(404)  # Abort if the selected coin is not in the strategy's coins
 
     # If the form is submitted and valid, pass the execution time as an argument
@@ -237,7 +237,6 @@ def strategy(strategy_id):
     performance_dict = get_performance(df)
     # Pass data to the template
     # df.to_csv("temp.csv")
-    sorted_coins = sorted(strategy.coins, key=lambda coin: coin.id)
 
     return render_template(
         "strategy.html",
