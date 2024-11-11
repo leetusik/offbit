@@ -8,16 +8,50 @@ from flask_mail import Message
 
 from app import create_app, db, mail
 from app.models import Coin, Strategy, UserStrategy
+from app.redis_listener import listen_to_redis_channel
 from app.utils.performance_utils import (
     calculate_coin_performance,
     calculate_strategy_performance,
 )
+from app.websocket_client import run_websocket_client
 
 app = create_app()
 
 with app.app_context():
     REDIS_URL = current_app.config["REDIS_URL"]
     redis_client = redis.StrictRedis.from_url(REDIS_URL)
+
+
+@shared_task
+def start_websocket_client():
+    """Celery task to start the WebSocket client."""
+    # Create a Redis lock object
+    lock = redis_client.lock("start_websocket_client", timeout=3600)  # Lock for 1 hour
+
+    # Attempt to acquire the lock
+    if lock.acquire(blocking=False):  # Non-blocking acquire
+        try:
+            # Only one task will proceed to run this
+            run_websocket_client()
+        finally:
+            # Ensure the lock is released when done
+            lock.release()
+
+
+@shared_task
+def start_redis_listener():
+    """Celery task to start the Redis Pub/Sub listener."""
+    # Create a Redis lock object
+    lock = redis_client.lock("start_redis_listener", timeout=3600)  # Lock for 1 hour
+
+    # Attempt to acquire the lock
+    if lock.acquire(blocking=False):  # Non-blocking acquire
+        try:
+            # Only one task will proceed to run this
+            listen_to_redis_channel()
+        finally:
+            # Ensure the lock is released when done
+            lock.release()
 
 
 @shared_task

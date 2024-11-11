@@ -515,6 +515,7 @@ class UserStrategy(db.Model):
     target_currency: so.Mapped["Coin"] = so.relationship(
         "Coin", back_populates="user_strategies"
     )
+    target_price: so.Mapped[Optional[float]] = so.mapped_column(sa.Float, nullable=True)
 
     # Set default _investing_limit to 0, making it private
     _investing_limit: so.Mapped[int] = so.mapped_column(
@@ -534,6 +535,12 @@ class UserStrategy(db.Model):
         default=0,
         nullable=False,
     )
+
+    def should_execute(self, current_price):
+        """Determine if the strategy should execute based on the current price."""
+        if self.target_price == None:
+            return False
+        return current_price >= self.target_price
 
     @property
     def investing_limit(self):

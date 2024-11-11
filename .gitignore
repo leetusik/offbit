@@ -166,7 +166,6 @@ cython_debug/
 .flaskenv
 _make_keys.py
 app.db
-migrations
 logs
 *.log
 *.db

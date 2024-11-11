@@ -65,6 +65,8 @@ def create_app(config_class=Config):
                 {"app.tasks.update_strategies_performance": {"queue": "offbit"}},
                 {"app.tasks.update_coins_performance": {"queue": "offbit"}},
                 {"app.tasks.send_async_email": {"queue": "offbit"}},
+                {"app.tasks.start_redis_listener": {"queue": "offbit"}},
+                {"app.tasks.start_websocket_client": {"queue": "offbit"}},
             ],
         ),
     )
@@ -128,6 +130,10 @@ def create_app(config_class=Config):
 
         app.logger.setLevel(logging.INFO)
         app.logger.info("Offbit startup")
+
+    # Start the Redis listener using a Celery task
+    app.extensions["celery"].send_task("app.tasks.start_redis_listener")
+    app.extensions["celery"].send_task("app.tasks.start_websocket_client")
 
     return app
 
