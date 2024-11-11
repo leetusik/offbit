@@ -283,7 +283,6 @@ def no_setting_while_investing():
 
 
 @bp.route("/set_timezone", methods=["POST"])
-@login_required
 def set_timezone():
     data = request.get_json()
     timezone = data.get("timezone")

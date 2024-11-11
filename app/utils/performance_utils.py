@@ -12,7 +12,7 @@ from app.utils.trading_conditions import get_condition, resample_df
 def calculate_strategy_performance(
     strategy: Strategy,
     time_period: timedelta,
-    execution_time: datetime = datetime(1970, 1, 1, 0, 0),
+    execution_time: datetime = datetime(1970, 1, 1, datetime.now(timezone.utc).hour, 0),
 ) -> float:
 
     while True:
@@ -237,7 +237,7 @@ def calculate_strategy_performance(
 
 def calculate_coin_performance(
     coin: Coin,
-    execution_time: datetime = datetime(1970, 1, 1, 0, 0),
+    execution_time: datetime = datetime(1970, 1, 1, datetime.now(timezone.utc).hour, 0),
 ) -> float:
 
     while True:

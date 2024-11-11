@@ -22,13 +22,6 @@ from app.main import bp
 from app.main.forms import EmptyForm, MakeStrategyForm, SetBacktestExecutionTimeForm
 from app.models import Coin, Strategy, UserStrategy
 from app.utils.performance_utils import get_backtest, get_performance
-from config import Config
-
-# app = create_app()
-
-# with current_app.app_context():
-REDIS_URL = Config.REDIS_URL
-redis_client = redis.StrictRedis.from_url(REDIS_URL)
 
 
 @bp.route("/")
@@ -49,6 +42,9 @@ def strategies():
 
     coins = db.session.scalars(sa.select(Coin)).all()
     coin_performance_data = {}
+    REDIS_URL = current_app.config["REDIS_URL"]
+    redis_client = redis.StrictRedis.from_url(REDIS_URL)
+
     for coin in coins:
         # Fetch performance metrics from Redis
         performance_24h = redis_client.hget(f"coin:{coin.id}:performance", "24h")
@@ -319,7 +315,6 @@ def faq():
 
 
 @bp.route("/set_timezone", methods=["POST"])
-@login_required
 def set_timezone():
     data = request.get_json()
     timezone = data.get("timezone")

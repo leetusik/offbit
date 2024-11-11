@@ -27,7 +27,6 @@ def celery_init_app(app: Flask) -> Celery:
     celery_app.set_default()
     celery_app.autodiscover_tasks(["app.tasks"])
     app.extensions["celery"] = celery_app
-    # print(celery_app.conf)
     return celery_app
 
 
@@ -112,12 +111,12 @@ def create_app(config_class=Config):
 
         if not os.path.exists("logs"):
             os.mkdir("logs")
-        # file_handler = RotatingFileHandler(
-        #     "logs/offbit.log",
-        #     maxBytes=10240,
-        #     backupCount=10,
-        # )
-        file_handler = logging.FileHandler("/app/logs/offbit.log")
+        file_handler = RotatingFileHandler(
+            "logs/offbit.log",
+            maxBytes=10240,
+            backupCount=10,
+        )
+        # file_handler = logging.FileHandler("/app/logs/offbit.log")
 
         file_handler.setFormatter(
             logging.Formatter(
