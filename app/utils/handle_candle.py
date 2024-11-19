@@ -1,4 +1,4 @@
-import ast
+import json
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -53,22 +53,29 @@ def get_candles(
     times = times[1:]
 
     lst = []
-    rate_limit_interval = 1 / 20  # Time in seconds to wait between requests
-
     for t in times:
         url = f"https://api.upbit.com/v1/candles/{interval}/{interval2}?market={market}&count={count}&to={t}"
-
         headers = {"accept": "application/json"}
+        print(t)
+        while True:
+            response = requests.get(url, headers=headers)
 
-        response = requests.get(url, headers=headers)
-        response = ast.literal_eval(response.text)
-        lst += response
-        # Wait to respect the rate limit
-        time.sleep(rate_limit_interval)
-        # print(response, type(response))
-        if type(response) == dict:
-            print(response)
-            return None
+            if response.status_code == 200:
+                try:
+                    # Use json.loads() instead of ast.literal_eval()
+                    data = json.loads(response.text)
+                    lst += data
+                    break  # Exit the loop if the request is successful
+                except json.JSONDecodeError as e:
+                    print(f"JSON decoding error: {e}")
+                    print(f"Response text: {response.text}")
+                    break  # Exit the loop on JSON parsing error
+            elif response.status_code == 429:
+                pass
+            else:
+                print(f"Unexpected error: {response.status_code}")
+                print(f"Response text: {response.text}")
+                break
 
     lst = remove_duplicates(lst)
     # Sort the list of dictionaries by 'candle_date_time_utc'
@@ -152,45 +159,3 @@ def concat_candles(long_df, short_df):
     final_df.reset_index(drop=True, inplace=True)
 
     return final_df
-
-
-# df = get_candles(start="2024-10-10 00:00:00")
-# print(df)
-# print(df.dtypes)
-
-# # Get the last row of the DataFrame
-# last_row = df.iloc[-1]
-
-# # Convert the 'time_utc' column value from the last row to a datetime object
-# last_time_utc = pd.to_datetime(last_row["time_utc"])
-
-# # Assuming formatted_now is a datetime object without seconds (formatted_now = datetime.now().replace(second=0, microsecond=0))
-# formatted_now = datetime.now(timezone.utc).replace(
-#     second=0, microsecond=0
-# )  # Convert formatted_now to naive if it has timezone info
-# formatted_now_naive = formatted_now.replace(tzinfo=None)
-
-# # Compare the two naive datetime objects
-# if last_time_utc == formatted_now_naive:
-#     print("The times match!")
-# else:
-#     print(
-#         f"The times do not match. Last time_utc: {last_time_utc}, formatted_now: {formatted_now_naive}"
-#     )
-
-
-# # """Sets the execution time based on a provided time string in hh:mm:ss format."""
-# # # Parse the string and store it as a timezone-aware datetime in UTC
-# time_format = "%H:%M:%S"
-# # time_obj = datetime.strptime("04:12:00", time_format).time()
-# # now_time = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None).time()
-# time_obj = (
-#     datetime.strptime("04:12:00", time_format)
-#     .replace(microsecond=0, tzinfo=None)
-#     .time()
-# )
-
-# # # Combine current date with the provided time and store it as a UTC-aware datetime
-# # execution_datetime = datetime.combine(now.date(), time_obj).astimezone(timezone.utc)
-# # execution_datetime = execution_datetime.replace(tzinfo=None)
-# print(time_obj.minute)
