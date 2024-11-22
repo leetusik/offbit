@@ -145,6 +145,19 @@ def strategy(strategy_id):
 
     if execution_time:
         # Convert to a datetime.time object
+        # Get user's timezone from session
+        user_timezone = session.get("timezone", "UTC")
+        user_timezone = pytz.timezone(user_timezone)
+
+        # Create a datetime object for today with the given time
+        local_datetime = datetime.combine(datetime.today(), execution_time)
+
+        # Localize the time to the user's timezone
+        localized_time = user_timezone.localize(local_datetime)
+
+        # Convert to UTC
+        utc_time = localized_time.astimezone(pytz.utc)
+        execution_time = utc_time.time()
         execution_time = datetime.strptime(str(execution_time), "%H:%M:%S").time()
     if param1:
         param1 = int(param1)
