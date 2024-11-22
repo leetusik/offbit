@@ -117,11 +117,11 @@ def update_and_execute():
 
         current = datetime.now()
 
-        update_coins_performance()
-        update_strategies_performance()
-        # if current.minute == 0:
-        #     update_coins_performance()
-        #     update_strategies_performance()
+        # update_coins_performance()
+        # update_strategies_performance()
+        if current.minute == 0:
+            update_coins_performance()
+            update_strategies_performance()
 
     finally:
         # Ensure the lock is released when the task is done
@@ -164,9 +164,10 @@ def execute_strategies():
         )  # Launch each task concurrently
 
         # Log the execution
-    current_app.logger.info(
-        f"Scheduled {len(user_strategies)} strategies to execute at {now}."
-    )
+    if len(user_strategies) > 0:
+        current_app.logger.info(
+            f"Scheduled {len(user_strategies)} strategies to execute at {now}."
+        )
 
 
 # need to handle speed. it would slow down as make strategies
