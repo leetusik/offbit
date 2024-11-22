@@ -176,3 +176,9 @@ dump.rdb
 investing_reference
 strategy_lab
 .cursorrules
+
+# deploy
+*.sh
+*.yml
+Dockerfile
+*.conf
