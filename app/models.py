@@ -614,18 +614,25 @@ class UserStrategy(db.Model):
         """activate a strategy and update the user's available balance."""
         data_ready = self.target_currency.get_short_historical_data()
         if data_ready is None:
+            return (False, "데이터가 준비되지 않았습니다.")
 
-            # Flash error message directly (if in route context)
-            # return redirect(url_for("user.dashboard"))
-            return (False, f"no data")
-        # Recalculate the user's available balance
-        if self.check_investing_limit():
-            current_app.extensions["celery"].send_task(
-                "app.tasks.execute_user_strategy", args=[self.id, True]
-            )
-            return (True, "success")
-        else:
-            return (False, f"no money")
+        try:
+            if self.check_investing_limit():
+                task = current_app.extensions["celery"].send_task(
+                    "app.tasks.execute_user_strategy", args=[self.id, True]
+                )
+                # Wait for task completion with timeout
+                try:
+                    task.get(timeout=10)  # Wait up to 10 seconds for task completion
+                    return (True, "success")
+                except TimeoutError:
+                    return (False, "전략 실행 시간이 초과되었습니다.")
+                except Exception as task_error:
+                    return (False, f"전략 실행 중 오류: {str(task_error)}")
+            else:
+                return (False, "투자 한도가 부족합니다.")
+        except Exception as e:
+            return (False, str(e))
 
     def deactivate(self):
         """Deactivate a strategy and update the user's available balance."""
