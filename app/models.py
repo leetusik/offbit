@@ -268,13 +268,10 @@ class Coin(db.Model):
     def save_historical_data(self, df: pd.DataFrame):
         """Save the historical data as binary pickle data."""
         # Use df_utils to convert DataFrame to pickle format
-        print("level 1")
         self.historical_data = save_dataframe_as_pickle(df)
-        print("level 2")
         self.short_historical_data = save_dataframe_as_pickle(
             df.tail(100000)
         )  # for like 70 days
-        print("level 3")
         db.session.commit()
         print(f"Historical data successfully saved to coin {self.name}.")
 
@@ -322,14 +319,10 @@ class Coin(db.Model):
         now_minus_3hour = datetime.now(timezone.utc) - timedelta(hours=3)
         now_minus_3hour = now_minus_3hour.strftime("%Y-%m-%d %H:%M:%S")
         short_df = get_candles(market=tickers[self.name], start=now_minus_3hour)
-        print("level 4")
         final_df = concat_candles(long_df=long_df, short_df=short_df)
-        print("level 5")
-        # add feature if final_df(concated df) has a time gap a lot.
 
+        # add feature if final_df(concated df) has a time gap a lot.
         self.save_historical_data(final_df)
-        print("level 6")
-        pass
 
     def __repr__(self):
         return f"<Coin name={self.name}>"

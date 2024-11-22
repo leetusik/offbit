@@ -28,8 +28,8 @@ def get_candles(
 ):
     if start is None:
         # Default start to one year before the current date and time
-        # start = (datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d %H:%M:%S")
-        start = "2017-09-01 00:00:00"
+        start = (datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d %H:%M:%S")
+        # start = "2017-09-01 00:00:00"
 
     times = get_time_intervals(
         initial_time_str=start,
