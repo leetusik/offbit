@@ -104,7 +104,7 @@ def update_coins_performance():
 @shared_task
 def update_and_execute():
     # Set a unique lock name for the task
-    lock = redis_client.lock("update_and_execute", timeout=3600)  # Lock for 1 hour
+    lock = redis_client.lock("update_and_execute", timeout=36000)  # Lock for 1 hour
     have_lock = lock.acquire(blocking=False)
 
     if not have_lock:

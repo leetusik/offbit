@@ -416,13 +416,13 @@ def calculate_strategy_performance(
         df["cumulative_returns"] = (1 + df["strategy_returns"]).cumprod()
         df["cumulative_returns2"] = (1 + df["strategy_returns2"]).cumprod()
 
-    day_ago_balance = df["cumulative_returns2"].iloc[-3]
+    day_ago_balance = df["cumulative_returns2"].iloc[-2]
 
-    month_ago_balance = df["cumulative_returns2"].iloc[-32]
+    month_ago_balance = df["cumulative_returns2"].iloc[-31]
 
-    year_ago_balance = df["cumulative_returns2"].iloc[-367]
+    year_ago_balance = df["cumulative_returns2"].iloc[-366]
 
-    last_day_balance = df["cumulative_returns2"].iloc[-2]
+    last_day_balance = df["cumulative_returns2"].iloc[-1]
 
     total_return_day = (last_day_balance - day_ago_balance) / day_ago_balance
     total_return_month = (last_day_balance - month_ago_balance) / month_ago_balance

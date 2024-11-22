@@ -176,7 +176,7 @@ dump.rdb
 investing_reference
 strategy_lab
 .cursorrules
-migrations
+migrations/
 
 # deploy
 *.sh
