@@ -72,7 +72,7 @@ class SetAPIKeyForm(FlaskForm):
     submit = SubmitField("Submit")
 
 
-class SetUserStrategyForm(FlaskForm):
+class SetOneParamUserStrategyForm(FlaskForm):
     currency = SelectField(
         "매매 종목 선택",
         choices=[],  # This will be populated dynamically
@@ -89,10 +89,57 @@ class SetUserStrategyForm(FlaskForm):
     )
     execution_time = TimeField(
         "투자 기준 시간",
-        # format="%H:%M:%S",  # This ensures input is in HH:MM:SS format
         validators=[DataRequired(message="Execution time is required")],
     )
-    submit = SubmitField("Set Strategy")
+    param1 = IntegerField(
+        "파라미터 1",
+        validators=[DataRequired(message="파라미터 1을 입력해주세요.")],
+    )
+    stop_loss = IntegerField(
+        "손절 기준 (%)",
+        validators=[Optional()],
+    )
+    submit = SubmitField("전략 설정하기")
+
+    def __init__(self, *args, strategy=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if strategy:
+            # Populate currency choices with available coins in strategy
+            self.currency.choices = [(coin.name, coin.name) for coin in strategy.coins]
+
+
+class SetTwoParamUserStrategyForm(FlaskForm):
+    currency = SelectField(
+        "매매 종목 선택",
+        choices=[],  # This will be populated dynamically
+        validators=[DataRequired(message="매매 종목을 선택해주세요.")],
+    )
+    investing_limit = IntegerField(
+        "전략 투자금 한도",
+        validators=[
+            DataRequired(),
+            NumberRange(
+                min=100000, message="투자금은 100,000원 이상부터 설정 가능합니다."
+            ),
+        ],
+    )
+    execution_time = TimeField(
+        "투자 기준 시간",
+        validators=[DataRequired(message="Execution time is required")],
+    )
+    param1 = IntegerField(
+        "파라미터 1",
+        validators=[DataRequired(message="파라미터 1을 입력해주세요.")],
+    )
+    param2 = IntegerField(
+        "파라미터 2",
+        validators=[DataRequired(message="파라미터 2를 입력해주세요.")],
+    )
+    stop_loss = IntegerField(
+        "손절 기준 (%)",
+        validators=[Optional()],
+    )
+    submit = SubmitField("전략 설정하기")
 
     def __init__(self, *args, strategy=None, **kwargs):
         super().__init__(*args, **kwargs)

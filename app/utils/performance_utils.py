@@ -6,7 +6,7 @@ import sqlalchemy as sa
 
 from app import db
 from app.models import Coin, Strategy
-from app.utils.trading_conditions import get_condition, resample_df
+from app.utils.handle_candle import resample_df
 
 
 def calculate_strategy_performance(
@@ -42,197 +42,397 @@ def calculate_strategy_performance(
     start_time = end_time - time_period
     filtered_df = df[df["time_utc"] >= start_time]
     df = resample_df(df=filtered_df, execution_time=execution_time)
-    if strategy.name == "rsi_cut_5%":
+
+    if strategy.name == "Relative_Strength_Index":
+        # 2
         # Calculate the price change
-        df["price_change"] = df["open"].diff()
+        df["price_change"] = df["close"].diff()
 
         # Calculate the gains and losses
         df["gain"] = np.where(df["price_change"] > 0, df["price_change"], 0)
         df["loss"] = np.where(df["price_change"] < 0, -df["price_change"], 0)
 
         # Calculate the average gain and average loss
-        window_length = 14
+        window_length = strategy.base_param1
         df["avg_gain"] = df["gain"].rolling(window=window_length).mean()
         df["avg_loss"] = df["loss"].rolling(window=window_length).mean()
 
-        # Calculate the RS (Relative Strength) and RSI
+        # Calculate RS and RSI
         df["rs"] = df["avg_gain"] / df["avg_loss"]
         df["rsi"] = 100 - (100 / (1 + df["rs"]))
 
-        # Implement RSI strategy for long positions only
-        df["signal"] = 0  # Default to no position
-        for i in range(1, len(df)):
-            # 매수 조건
-            if (df.loc[i, "rsi"] >= 30) and (df.loc[i - 1, "rsi"] < 30):
-                df.loc[i, "signal"] = 1
-            # 매도 조건
-            elif (df.loc[i, "rsi"] <= 70) and (df.loc[i - 1, "rsi"] > 70):
-                df.loc[i, "signal"] = -1
-        # Manage positions with stop loss, take profit, and sell signal
+        # Set default signal to 0, no position
+        df["signal"] = 0
+        df.loc[(df["rsi"] >= 30) & (df["rsi"].shift(1).fillna(0) < 30), "signal"] = (
+            1  # Buy signal
+        )
+        df.loc[(df["rsi"] <= 70) & (df["rsi"].shift(1).fillna(0) > 70), "signal"] = (
+            -1
+        )  # Sell signal
+
+        # Initialize the position column with default value 0
         df["position"] = 0
-        df["highest_price"] = np.nan
-        df["exit_price"] = np.nan
-        holding_position = False
 
+        # Variable to track the current position status
+        current_position = 0
+
+        # Iterate over the rows and set the position
         for i in range(1, len(df)):
-            if df["signal"].iloc[i] == 1 and not holding_position:
-                # Enter position
-                df.loc[i, "position"] = 1
-                df.loc[i, "highest_price"] = df.loc[i, "open"]
-                holding_position = True
-            elif holding_position:
-                # Calculate percentage change since entry
-                # df['highest_price'].iloc[i] = max(df['highest_price'].iloc[i-1], df['open'].iloc[i])
-                df.loc[i, "highest_price"] = max(
-                    df.loc[i - 1, "highest_price"], df.loc[i - 1, "open"]
-                )
-                highest_price = df["highest_price"].iloc[i]
-                current_price = df["open"].iloc[i]
-                percent_change = (current_price - highest_price) / highest_price * 100
-
-                if df["signal"].iloc[i] == -1:  # Sell signal condition
-                    # print(f"cond1 on{i}")
-                    df.loc[i, "position"] = 0
-                    df.loc[i, "exit_price"] = current_price
-                    holding_position = False
-                elif percent_change <= -5:  # Stop loss condition
-                    # print(f"cond2 on{i}")
-                    df.loc[i, "position"] = 0
-                    df.loc[i, "exit_price"] = current_price
-                    holding_position = False
-                else:
-                    # Continue holding the position if no sell conditions are met
-                    df.loc[i, "position"] = df.loc[i - 1, "position"]
-
-            else:
-                # No signal and no position
-                # df['position'].iloc[i] = df['position'].iloc[i-1]
-                df.loc[i, "position"] = df.loc[i - 1, "position"]
+            if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                if df.loc[i, "signal"] == -1:
+                    df.loc[i, "position"] = 1
+                    current_position = 0
+                    continue
+                current_position = 1
+            elif df.loc[i, "signal"] == -1:  # Exit position
+                df.loc[i, "position"] = current_position
+                current_position = 0
+                continue
+            df.loc[i, "position"] = current_position
 
         # Calculate the strategy returns (only when in a long position)
-        df["strategy_returns"] = df["position"].shift(1) * df["open"].pct_change()
+        df["strategy_returns"] = df["position"] * df["close"].pct_change()
         df["strategy_returns2"] = df["strategy_returns"]
 
-        for i in range(1, len(df)):
-            buy_price = df.loc[i - 1, "open"]
-            buy_price_copy = buy_price
-            sell_price = df.loc[i, "open"]
-            sell_price_copy = sell_price
-            if df.loc[i - 1, "position"] == 1 and df.loc[i - 1, "signal"] == 1:
-                # df.loc[i, 'strategy_returns2'] = (df.loc[i,'position'])/(df.loc[i-1, 'position'] * 1.002) -1
-                buy_price = df.loc[i - 1, "open"] * 1.002
-            if df.loc[i, "position"] == 0 and df.loc[i - 1, "position"] != 0:
-                # df.loc[i, 'strategy_returns2'] = (df.loc[i,'position'] * 0.998)/(df.loc[i-1, 'position']) -1
-                sell_price = df.loc[i, "open"] * 0.998
+        # Adjust for trading fees (buy with 0.2% fee, sell with 0.2% fee)
+        df["buy_price"] = df["close"].shift(1) * np.where(
+            df["signal"].shift(1) == 1, 1.002, 1
+        )
+        df["sell_price"] = df["close"] * np.where(df["signal"] == -1, 0.998, 1)
 
-            if buy_price == buy_price_copy and sell_price == sell_price_copy:
-                continue
-
-            df.loc[i, "strategy_returns2"] = sell_price / buy_price - 1
+        # Calculate strategy returns with fees
+        df["strategy_returns2"] = np.where(
+            df["position"] == 1, df["sell_price"] / df["buy_price"] - 1, 0
+        )
 
         # Calculate the cumulative returns
         df["cumulative_returns"] = (1 + df["strategy_returns"]).cumprod()
         df["cumulative_returns2"] = (1 + df["strategy_returns2"]).cumprod()
 
-        # Calculate the benchmark cumulative returns (buy and hold strategy)
-        df["benchmark_returns"] = (1 + df["open"].pct_change()).cumprod()
+    if strategy.name == "Moving_Average_Crossover":
+        # 1, 20
+        short_ma = strategy.base_param1
+        long_ma = strategy.base_param2
+        df[f"ma_{short_ma}"] = df["close"].rolling(window=short_ma).mean()
+        df[f"ma_{long_ma}"] = df["close"].rolling(window=long_ma).mean()
 
-        day_ago_balance = df["cumulative_returns2"].iloc[-2]
+        # Initialize the signal column with default value 0
+        df["signal"] = 0
 
-        month_ago_balance = df["cumulative_returns2"].iloc[-31]
+        # Generate buy signal: 1 when ma5 crosses above ma20
+        df.loc[
+            (df[f"ma_{short_ma}"] > df[f"ma_{long_ma}"])
+            & (df[f"ma_{short_ma}"].shift(1) <= df[f"ma_{long_ma}"].shift(1)),
+            "signal",
+        ] = 1
 
-        year_ago_balance = df["cumulative_returns2"].iloc[-366]
+        # Generate sell signal: -1 when ma_5 crosses below ma_20
+        df.loc[
+            (df[f"ma_{short_ma}"] < df[f"ma_{long_ma}"])
+            & (df[f"ma_{short_ma}"].shift(1) >= df[f"ma_{long_ma}"].shift(1)),
+            "signal",
+        ] = -1
 
-        last_day_balance = df["cumulative_returns2"].iloc[-1]
-
-        total_return_day = (last_day_balance - day_ago_balance) / day_ago_balance
-        total_return_month = (last_day_balance - month_ago_balance) / month_ago_balance
-        total_return_year = (last_day_balance - year_ago_balance) / year_ago_balance
-
-        return (
-            round(float(total_return_day * 100), 2),
-            round(float(total_return_month * 100), 2),
-            round(float(total_return_year * 100), 2),
-        )
-    if strategy.name == "ma_50":
-        interval = 50
-        df[f"{interval}_ma"] = df["open"].rolling(window=interval).mean()
-
-        # Implement RSI strategy for long positions only
-        df["signal"] = 0  # Default to no position
-        for i in range(interval, len(df)):
-            # Buy condition
-            if (
-                df.loc[i, "open"] >= df.loc[i, f"{interval}_ma"]
-                and df.loc[i - 1, "open"] < df.loc[i - 1, f"{interval}_ma"]
-            ):
-                df.loc[i, "signal"] = 1
-            # Sell condition
-            elif (
-                df.loc[i, "open"] < df.loc[i, f"{interval}_ma"]
-                and df.loc[i - 1, "open"] >= df.loc[i - 1, f"{interval}_ma"]
-            ):
-                df.loc[i, "signal"] = -1
-
-        # Manage positions
+        # Initialize the position column with default value 0
         df["position"] = 0
-        holding_position = False
 
+        # Variable to track the current position status
+        current_position = 0
+
+        # Iterate over the rows and set the position
         for i in range(1, len(df)):
-            if df.loc[i, "signal"] == 1 and not holding_position:
-                df.loc[i, "position"] = 1
-                holding_position = True
-            elif df.loc[i, "signal"] == -1 and holding_position:
-                df.loc[i, "position"] = 0
-                holding_position = False
-            else:
-                df.loc[i, "position"] = df.loc[i - 1, "position"]
+            if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                if df.loc[i, "signal"] == -1:
+                    df.loc[i, "position"] = 1
+                    current_position = 0
+                    continue
+                current_position = 1
+            elif df.loc[i, "signal"] == -1:  # Exit position
+                df.loc[i, "position"] = current_position
+                current_position = 0
+                continue
+            df.loc[i, "position"] = current_position
 
         # Calculate the strategy returns (only when in a long position)
-        df["strategy_returns"] = df["position"].shift(1) * df["open"].pct_change()
+        df["strategy_returns"] = df["position"] * df["close"].pct_change()
         df["strategy_returns2"] = df["strategy_returns"]
 
-        for i in range(1, len(df)):
-            buy_price = df.loc[i - 1, "open"]
-            buy_price_copy = buy_price
-            sell_price = df.loc[i, "open"]
-            sell_price_copy = sell_price
-            if df.loc[i - 1, "position"] == 1 and df.loc[i - 1, "signal"] == 1:
-                # df.loc[i, 'strategy_returns2'] = (df.loc[i,'position'])/(df.loc[i-1, 'position'] * 1.002) -1
-                buy_price = df.loc[i - 1, "open"] * 1.002
-            if df.loc[i, "position"] == 0 and df.loc[i - 1, "position"] != 0:
-                # df.loc[i, 'strategy_returns2'] = (df.loc[i,'position'] * 0.998)/(df.loc[i-1, 'position']) -1
-                sell_price = df.loc[i, "open"] * 0.998
+        # Adjust for trading fees (buy with 0.2% fee, sell with 0.2% fee)
+        df["buy_price"] = df["close"].shift(1) * np.where(
+            df["signal"].shift(1) == 1, 1.002, 1
+        )
+        df["sell_price"] = df["close"] * np.where(df["signal"] == -1, 0.998, 1)
 
-            if buy_price == buy_price_copy and sell_price == sell_price_copy:
-                continue
-
-            df.loc[i, "strategy_returns2"] = sell_price / buy_price - 1
+        # Calculate strategy returns with fees
+        df["strategy_returns2"] = np.where(
+            df["position"] == 1, df["sell_price"] / df["buy_price"] - 1, 0
+        )
 
         # Calculate the cumulative returns
         df["cumulative_returns"] = (1 + df["strategy_returns"]).cumprod()
         df["cumulative_returns2"] = (1 + df["strategy_returns2"]).cumprod()
 
-        # Calculate the benchmark cumulative returns (buy and hold strategy)
-        df["benchmark_returns"] = (1 + df["open"].pct_change()).cumprod()
+    if strategy.name == "Trading_Range_Breakout":
+        # 10
+        lookback_period = strategy.base_param1
 
-        day_ago_balance = df["cumulative_returns2"].iloc[-2]
+        df[f"high_{lookback_period}"] = df["high"].rolling(window=lookback_period).max()
+        df[f"low_{lookback_period}"] = df["low"].rolling(window=lookback_period).min()
 
-        month_ago_balance = df["cumulative_returns2"].iloc[-31]
+        # Initialize the signal column with default value 0
+        df["signal"] = 0
 
-        year_ago_balance = df["cumulative_returns2"].iloc[-366]
+        # Generate buy signal: 1 when price breaks above the high
+        df.loc[df["close"] > df[f"high_{lookback_period}"].shift(1), "signal"] = 1
 
-        last_day_balance = df["cumulative_returns2"].iloc[-1]
+        # Generate sell signal: -1 when price breaks below the low
+        df.loc[df["close"] < df[f"low_{lookback_period}"].shift(1), "signal"] = -1
 
-        total_return_day = (last_day_balance - day_ago_balance) / day_ago_balance
-        total_return_month = (last_day_balance - month_ago_balance) / month_ago_balance
-        total_return_year = (last_day_balance - year_ago_balance) / year_ago_balance
+        # Initialize the position column with default value 0
+        df["position"] = 0
 
-        return (
-            round(float(total_return_day * 100), 2),
-            round(float(total_return_month * 100), 2),
-            round(float(total_return_year * 100), 2),
+        # Variable to track the current position status
+        current_position = 0
+
+        # Iterate over the rows and set the position
+        for i in range(1, len(df)):
+            if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                if df.loc[i, "signal"] == -1:
+                    df.loc[i, "position"] = 1
+                    current_position = 0
+                    continue
+                elif df.loc[i, "signal"] == 1:
+                    df.loc[i, "signal"] = 0
+                current_position = 1
+            elif df.loc[i, "signal"] == -1:  # Exit position
+                df.loc[i, "position"] = current_position
+                current_position = 0
+                continue
+            elif current_position == 1:
+                df.loc[i, "signal"] = 0
+            df.loc[i, "position"] = current_position
+
+        # Calculate the strategy returns (only when in a long position)
+        df["strategy_returns"] = df["position"] * df["close"].pct_change()
+        df["strategy_returns2"] = df["strategy_returns"]
+
+        # Adjust for trading fees (buy with 0.2% fee, sell with 0.2% fee)
+        df["buy_price"] = df["close"].shift(1) * np.where(
+            df["signal"].shift(1) == 1, 1.002, 1
         )
+        df["sell_price"] = df["close"] * np.where(df["signal"] == -1, 0.998, 1)
+
+        # Calculate strategy returns with fees
+        df["strategy_returns2"] = np.where(
+            df["position"] == 1, df["sell_price"] / df["buy_price"] - 1, 0
+        )
+
+        # Calculate the cumulative returns
+        df["cumulative_returns"] = (1 + df["strategy_returns"]).cumprod()
+        df["cumulative_returns2"] = (1 + df["strategy_returns2"]).cumprod()
+
+    if strategy.name == "Moving_Average_Convergence_Divergence":
+        # 1, 15
+        fast_period = strategy.base_param1
+        slow_period = strategy.base_param2
+
+        # Calculate MACD components
+        df["ema_fast"] = df["close"].ewm(span=fast_period, adjust=False).mean()
+        df["ema_slow"] = df["close"].ewm(span=slow_period, adjust=False).mean()
+        df["macd"] = df["ema_fast"] - df["ema_slow"]
+        # df["signal_line"] = df["macd"].ewm(span=signal_period, adjust=False).mean()
+
+        # Initialize the signal column with default value 0
+        df["signal"] = 0
+
+        # Generate buy signal: 1 when MACD crosses above zero
+        df.loc[(df["macd"] > 0) & (df["macd"].shift(1) <= 0), "signal"] = 1
+
+        # Generate sell signal: -1 when MACD crosses below zero
+        df.loc[(df["macd"] < 0) & (df["macd"].shift(1) >= 0), "signal"] = -1
+
+        # Initialize the position column with default value 0
+        df["position"] = 0
+
+        # Variable to track the current position status
+        current_position = 0
+
+        # Iterate over the rows and set the position
+        for i in range(1, len(df)):
+            if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                if df.loc[i, "signal"] == -1:
+                    df.loc[i, "position"] = 1
+                    current_position = 0
+                    continue
+                current_position = 1
+            elif df.loc[i, "signal"] == -1:  # Exit position
+                df.loc[i, "position"] = current_position
+                current_position = 0
+                continue
+            df.loc[i, "position"] = current_position
+
+        # Calculate the strategy returns (only when in a long position)
+        df["strategy_returns"] = df["position"] * df["close"].pct_change()
+        df["strategy_returns2"] = df["strategy_returns"]
+
+        # Adjust for trading fees (buy with 0.2% fee, sell with 0.2% fee)
+        df["buy_price"] = df["close"].shift(1) * np.where(
+            df["signal"].shift(1) == 1, 1.002, 1
+        )
+        df["sell_price"] = df["close"] * np.where(df["signal"] == -1, 0.998, 1)
+
+        # Calculate strategy returns with fees
+        df["strategy_returns2"] = np.where(
+            df["position"] == 1, df["sell_price"] / df["buy_price"] - 1, 0
+        )
+
+        # Calculate the cumulative returns
+        df["cumulative_returns"] = (1 + df["strategy_returns"]).cumprod()
+        df["cumulative_returns2"] = (1 + df["strategy_returns2"]).cumprod()
+
+    if strategy.name == "Rate_of_Change":
+        # 20
+        momentum_period = strategy.base_param1
+        df["momentum"] = df["close"].pct_change(periods=momentum_period)
+
+        # Initialize the signal column with default value 0
+        df["signal"] = 0
+
+        # Generate buy signal: 1 when momentum crosses above zero
+        df.loc[
+            (df["momentum"] > 0) & (df["momentum"].shift(1).fillna(0) <= 0), "signal"
+        ] = 1
+
+        # Generate sell signal: -1 when momentum crosses below zero
+        df.loc[
+            (df["momentum"] < 0) & (df["momentum"].shift(1).fillna(0) >= 0), "signal"
+        ] = -1
+
+        # Initialize the position column with default value 0
+        df["position"] = 0
+
+        # Variable to track the current position status
+        current_position = 0
+
+        # Iterate over the rows and set the position
+        for i in range(1, len(df)):
+            if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                if df.loc[i, "signal"] == -1:
+                    df.loc[i, "position"] = 1
+                    current_position = 0
+                    continue
+                current_position = 1
+            elif df.loc[i, "signal"] == -1:  # Exit position
+                df.loc[i, "position"] = current_position
+                current_position = 0
+                continue
+            df.loc[i, "position"] = current_position
+
+        # Calculate the strategy returns (only when in a long position)
+        df["strategy_returns"] = df["position"] * df["close"].pct_change()
+        df["strategy_returns2"] = df["strategy_returns"]
+
+        # Adjust for trading fees (buy with 0.2% fee, sell with 0.2% fee)
+        df["buy_price"] = df["close"].shift(1) * np.where(
+            df["signal"].shift(1) == 1, 1.002, 1
+        )
+        df["sell_price"] = df["close"] * np.where(df["signal"] == -1, 0.998, 1)
+
+        # Calculate strategy returns with fees
+        df["strategy_returns2"] = np.where(
+            df["position"] == 1, df["sell_price"] / df["buy_price"] - 1, 0
+        )
+
+        # Calculate the cumulative returns
+        df["cumulative_returns"] = (1 + df["strategy_returns"]).cumprod()
+        df["cumulative_returns2"] = (1 + df["strategy_returns2"]).cumprod()
+
+    if strategy.name == "On_Balance_Volume":
+        # 15, 30
+        short_ma = strategy.base_param1
+        long_ma = strategy.base_param2
+        df["short_volume_ma"] = df["volume_krw"].rolling(short_ma).mean()
+        df["long_volume_ma"] = df["volume_krw"].rolling(long_ma).mean()
+
+        # Initialize the signal column with default value 0
+        df["signal"] = 0
+
+        # Generate buy signal: 1 when MACD crosses above zero
+        df.loc[
+            (df["short_volume_ma"] > df["long_volume_ma"])
+            & (
+                df["short_volume_ma"].shift(1).fillna(0)
+                <= df["long_volume_ma"].shift(1).fillna(0)
+            ),
+            "signal",
+        ] = 1
+
+        # Generate sell signal: -1 when MACD crosses below zero
+        df.loc[
+            (df["short_volume_ma"] < df["long_volume_ma"])
+            & (
+                df["short_volume_ma"].shift(1).fillna(0)
+                >= df["long_volume_ma"].shift(1).fillna(0)
+            ),
+            "signal",
+        ] = -1
+
+        # Initialize the position column with default value 0
+        df["position"] = 0
+
+        # Variable to track the current position status
+        current_position = 0
+
+        # Iterate over the rows and set the position
+        for i in range(1, len(df)):
+            if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                if df.loc[i, "signal"] == -1:
+                    df.loc[i, "position"] = 1
+                    current_position = 0
+                    continue
+                current_position = 1
+            elif df.loc[i, "signal"] == -1:  # Exit position
+                df.loc[i, "position"] = current_position
+                current_position = 0
+                continue
+            df.loc[i, "position"] = current_position
+
+        # Calculate the strategy returns (only when in a long position)
+        df["strategy_returns"] = df["position"] * df["close"].pct_change()
+        df["strategy_returns2"] = df["strategy_returns"]
+
+        # Adjust for trading fees (buy with 0.2% fee, sell with 0.2% fee)
+        df["buy_price"] = df["close"].shift(1) * np.where(
+            df["signal"].shift(1) == 1, 1.002, 1
+        )
+        df["sell_price"] = df["close"] * np.where(df["signal"] == -1, 0.998, 1)
+
+        # Calculate strategy returns with fees
+        df["strategy_returns2"] = np.where(
+            df["position"] == 1, df["sell_price"] / df["buy_price"] - 1, 0
+        )
+
+        # Calculate the cumulative returns
+        df["cumulative_returns"] = (1 + df["strategy_returns"]).cumprod()
+        df["cumulative_returns2"] = (1 + df["strategy_returns2"]).cumprod()
+
+    day_ago_balance = df["cumulative_returns2"].iloc[-2]
+
+    month_ago_balance = df["cumulative_returns2"].iloc[-31]
+
+    year_ago_balance = df["cumulative_returns2"].iloc[-366]
+
+    last_day_balance = df["cumulative_returns2"].iloc[-1]
+
+    total_return_day = (last_day_balance - day_ago_balance) / day_ago_balance
+    total_return_month = (last_day_balance - month_ago_balance) / month_ago_balance
+    total_return_year = (last_day_balance - year_ago_balance) / year_ago_balance
+
+    return (
+        round(float(total_return_day * 100), 2),
+        round(float(total_return_month * 100), 2),
+        round(float(total_return_year * 100), 2),
+    )
 
 
 def calculate_coin_performance(
@@ -262,13 +462,9 @@ def calculate_coin_performance(
             coin.make_historical_data()
 
     df = coin.get_historical_data()
-    # # Filter the data to only include rows within the specified time period
-    # end_time = pd.Timestamp.now(tz="UTC").to_pydatetime().replace(tzinfo=None)
-    # start_time = end_time - time_period
-    # filtered_df = df[df["time_utc"] >= start_time]
     df = resample_df(df=df, execution_time=execution_time)
     # Calculate the benchmark cumulative returns (buy and hold strategy)
-    df["coin_returns"] = (1 + df["open"].pct_change()).cumprod()
+    df["coin_returns"] = (1 + df["close"].pct_change()).cumprod()
 
     day_ago_coin = df["coin_returns"].iloc[-2]
 
@@ -290,175 +486,691 @@ def calculate_coin_performance(
 
 def get_backtest(
     strategy: Strategy,
-    selected_coin=str,
+    selected_coin: str,
+    param1: int,
+    param2: int | None,
+    stop_loss: int | None,
     execution_time: datetime = datetime(1970, 1, 1, 0, 0),
 ) -> float:
     coin = db.session.scalar(sa.select(Coin).where(Coin.name == selected_coin))
     df = coin.get_historical_data()
-    # Filter the data to only include rows within the specified time period
-    # end_time = pd.Timestamp.now(tz="UTC").to_pydatetime().replace(tzinfo=None)
-    # start_time = end_time - time_period
-    # filtered_df = df[df["time_utc"] >= start_time]
     df = resample_df(df=df, execution_time=execution_time)
-    # print(strategy.name)
-    if strategy.name == "rsi_cut_5%":
+    if stop_loss:
+        stop_loss_pct = stop_loss / 100
+    if strategy.name == "Relative_Strength_Index":
+        window_length = param1
         # Calculate the price change
-        df["price_change"] = df["open"].diff()
+        df["price_change"] = df["close"].diff()
 
         # Calculate the gains and losses
         df["gain"] = np.where(df["price_change"] > 0, df["price_change"], 0)
         df["loss"] = np.where(df["price_change"] < 0, -df["price_change"], 0)
 
         # Calculate the average gain and average loss
-        window_length = 14
         df["avg_gain"] = df["gain"].rolling(window=window_length).mean()
         df["avg_loss"] = df["loss"].rolling(window=window_length).mean()
 
-        # Calculate the RS (Relative Strength) and RSI
+        # Calculate RS and RSI
         df["rs"] = df["avg_gain"] / df["avg_loss"]
         df["rsi"] = 100 - (100 / (1 + df["rs"]))
 
-        # Implement RSI strategy for long positions only
-        df["signal"] = 0  # Default to no position
-        for i in range(1, len(df)):
-            # 매수 조건
-            if (df.loc[i, "rsi"] >= 30) and (df.loc[i - 1, "rsi"] < 30):
-                df.loc[i, "signal"] = 1
-            # 매도 조건
-            elif (df.loc[i, "rsi"] <= 70) and (df.loc[i - 1, "rsi"] > 70):
-                df.loc[i, "signal"] = -1
-        # Manage positions with stop loss, take profit, and sell signal
+        # Set default signal to 0, no position
+        df["signal"] = 0
+        df.loc[(df["rsi"] >= 30) & (df["rsi"].shift(1).fillna(0) < 30), "signal"] = (
+            1  # Buy signal
+        )
+        df.loc[(df["rsi"] <= 70) & (df["rsi"].shift(1).fillna(0) > 70), "signal"] = (
+            -1
+        )  # Sell signal
+
+        # Initialize the position column with default value 0
         df["position"] = 0
         df["highest_price"] = np.nan
-        df["exit_price"] = np.nan
-        holding_position = False
 
-        for i in range(1, len(df)):
-            if df["signal"].iloc[i] == 1 and not holding_position:
-                # Enter position
-                df.loc[i, "position"] = 1
-                df.loc[i, "highest_price"] = df.loc[i, "open"]
-                holding_position = True
-            elif holding_position:
-                # Calculate percentage change since entry
-                # df['highest_price'].iloc[i] = max(df['highest_price'].iloc[i-1], df['open'].iloc[i])
-                df.loc[i, "highest_price"] = max(
-                    df.loc[i - 1, "highest_price"], df.loc[i - 1, "open"]
-                )
-                highest_price = df["highest_price"].iloc[i]
-                current_price = df["open"].iloc[i]
-                percent_change = (current_price - highest_price) / highest_price * 100
+        # Variable to track the current position status
+        current_position = 0
 
-                if df["signal"].iloc[i] == -1:  # Sell signal condition
-                    # print(f"cond1 on{i}")
-                    df.loc[i, "position"] = 0
-                    df.loc[i, "exit_price"] = current_price
-                    holding_position = False
-                elif percent_change <= -5:  # Stop loss condition
-                    # print(f"cond2 on{i}")
-                    df.loc[i, "position"] = 0
-                    df.loc[i, "exit_price"] = current_price
-                    holding_position = False
-                else:
-                    # Continue holding the position if no sell conditions are met
-                    df.loc[i, "position"] = df.loc[i - 1, "position"]
+        if stop_loss:
+            # Iterate over the rows and set the position
+            for i in range(1, len(df)):
+                if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "close"], df.loc[i, "close"]
+                    )
+                    if df.loc[i, "signal"] == -1:
+                        df.loc[i, "position"] = 1
+                        current_position = 0
+                        continue
 
-            else:
-                # No signal and no position
-                # df['position'].iloc[i] = df['position'].iloc[i-1]
-                df.loc[i, "position"] = df.loc[i - 1, "position"]
+                    if df.loc[i, "close"] <= df.loc[i, "highest_price"] * (
+                        1 - stop_loss_pct
+                    ):
+                        df.loc[i, "position"] = 1
+                        df.loc[i, "signal"] = -1
+                        current_position = 0
+                        continue
+                    current_position = 1
+                elif (
+                    df.loc[i, "signal"] == -1 and current_position == 1
+                ):  # Exit position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "highest_price"], df.loc[i, "close"]
+                    )
+                    df.loc[i, "position"] = current_position
+                    current_position = 0
+                    continue
+
+                elif (
+                    current_position == 1
+                ):  # Check current_position instead of df position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "highest_price"], df.loc[i, "close"]
+                    )
+                    if df.loc[i, "close"] <= df.loc[i, "highest_price"] * (
+                        1 - stop_loss_pct
+                    ):
+                        df.loc[i, "position"] = 1
+                        df.loc[i, "signal"] = -1
+                        current_position = 0
+                        continue
+
+                if (
+                    current_position == 0
+                    and df.loc[i, "rsi"] > 30
+                    and df.loc[i - 1, "rsi"] <= 30
+                ):
+                    df.loc[i, "signal"] = 1
+                df.loc[i, "position"] = current_position
+        else:
+            # Iterate over the rows and set the position
+            for i in range(1, len(df)):
+                if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                    if df.loc[i, "signal"] == -1:
+                        df.loc[i, "position"] = 1
+                        current_position = 0
+                        continue
+                    current_position = 1
+                elif df.loc[i, "signal"] == -1:  # Exit position
+                    df.loc[i, "position"] = current_position
+                    current_position = 0
+                    continue
+                df.loc[i, "position"] = current_position
 
         # Calculate the strategy returns (only when in a long position)
-        df["strategy_returns"] = df["position"].shift(1) * df["open"].pct_change()
+        df["strategy_returns"] = df["position"] * df["close"].pct_change()
         df["strategy_returns2"] = df["strategy_returns"]
 
-        for i in range(1, len(df)):
-            buy_price = df.loc[i - 1, "open"]
-            buy_price_copy = buy_price
-            sell_price = df.loc[i, "open"]
-            sell_price_copy = sell_price
-            if df.loc[i - 1, "position"] == 1 and df.loc[i - 1, "signal"] == 1:
-                # df.loc[i, 'strategy_returns2'] = (df.loc[i,'position'])/(df.loc[i-1, 'position'] * 1.002) -1
-                buy_price = df.loc[i - 1, "open"] * 1.002
-            if df.loc[i, "position"] == 0 and df.loc[i - 1, "position"] != 0:
-                # df.loc[i, 'strategy_returns2'] = (df.loc[i,'position'] * 0.998)/(df.loc[i-1, 'position']) -1
-                sell_price = df.loc[i, "open"] * 0.998
+        # Adjust for trading fees (buy with 0.2% fee, sell with 0.2% fee)
+        df["buy_price"] = df["close"].shift(1) * np.where(
+            df["signal"].shift(1) == 1, 1.002, 1
+        )
+        df["sell_price"] = df["close"] * np.where(df["signal"] == -1, 0.998, 1)
 
-            if buy_price == buy_price_copy and sell_price == sell_price_copy:
-                continue
-
-            df.loc[i, "strategy_returns2"] = sell_price / buy_price - 1
+        # Calculate strategy returns with fees
+        df["strategy_returns2"] = np.where(
+            df["position"] == 1, df["sell_price"] / df["buy_price"] - 1, 0
+        )
 
         # Calculate the cumulative returns
         df["cumulative_returns"] = (1 + df["strategy_returns"]).cumprod()
         df["cumulative_returns2"] = (1 + df["strategy_returns2"]).cumprod()
 
-        # Calculate the benchmark cumulative returns (buy and hold strategy)
-        df["benchmark_returns"] = (1 + df["open"].pct_change()).cumprod()
+    if strategy.name == "Moving_Average_Crossover":
+        short_ma = param1
+        long_ma = param2
+        df[f"ma_{short_ma}"] = df["close"].rolling(window=short_ma).mean()
+        df[f"ma_{long_ma}"] = df["close"].rolling(window=long_ma).mean()
 
-        return df
-    if strategy.name == "ma_50":
-        interval = 50
-        df[f"{interval}_ma"] = df["open"].rolling(window=interval).mean()
+        # Initialize the signal column with default value 0
+        df["signal"] = 0
 
-        # Implement RSI strategy for long positions only
-        df["signal"] = 0  # Default to no position
-        for i in range(interval, len(df)):
-            # Buy condition
-            if (
-                df.loc[i, "open"] >= df.loc[i, f"{interval}_ma"]
-                and df.loc[i - 1, "open"] < df.loc[i - 1, f"{interval}_ma"]
-            ):
-                df.loc[i, "signal"] = 1
-            # Sell condition
-            elif (
-                df.loc[i, "open"] < df.loc[i, f"{interval}_ma"]
-                and df.loc[i - 1, "open"] >= df.loc[i - 1, f"{interval}_ma"]
-            ):
-                df.loc[i, "signal"] = -1
+        # Generate buy signal: 1 when ma5 crosses above ma20
+        df.loc[
+            (df[f"ma_{short_ma}"] > df[f"ma_{long_ma}"])
+            & (df[f"ma_{short_ma}"].shift(1) <= df[f"ma_{long_ma}"].shift(1)),
+            "signal",
+        ] = 1
 
-        # Manage positions
+        # Generate sell signal: -1 when ma_5 crosses below ma_20
+        df.loc[
+            (df[f"ma_{short_ma}"] < df[f"ma_{long_ma}"])
+            & (df[f"ma_{short_ma}"].shift(1) >= df[f"ma_{long_ma}"].shift(1)),
+            "signal",
+        ] = -1
+
+        # Initialize the position column with default value 0
         df["position"] = 0
-        holding_position = False
+        df["highest_price"] = np.nan
 
-        for i in range(1, len(df)):
-            if df.loc[i, "signal"] == 1 and not holding_position:
-                df.loc[i, "position"] = 1
-                holding_position = True
-            elif df.loc[i, "signal"] == -1 and holding_position:
-                df.loc[i, "position"] = 0
-                holding_position = False
-            else:
-                df.loc[i, "position"] = df.loc[i - 1, "position"]
+        # Variable to track the current position status
+        current_position = 0
+
+        if stop_loss:
+            # Iterate over the rows and set the position
+            for i in range(1, len(df)):
+                if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "close"], df.loc[i, "close"]
+                    )
+                    if df.loc[i, "signal"] == -1:
+                        df.loc[i, "position"] = 1
+                        current_position = 0
+                        continue
+                    if df.loc[i, "close"] <= df.loc[i, "highest_price"] * (
+                        1 - stop_loss_pct
+                    ):
+                        df.loc[i, "position"] = 1
+                        df.loc[i, "signal"] = -1
+                        current_position = 0
+                        continue
+                    current_position = 1
+                elif (
+                    df.loc[i, "signal"] == -1 and current_position == 1
+                ):  # Exit position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "highest_price"], df.loc[i, "close"]
+                    )
+                    df.loc[i, "position"] = current_position
+                    current_position = 0
+                    continue
+
+                elif (
+                    current_position == 1
+                ):  # Check current_position instead of df position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "highest_price"], df.loc[i, "close"]
+                    )
+                    if df.loc[i, "close"] <= df.loc[i, "highest_price"] * (
+                        1 - stop_loss_pct
+                    ):
+                        df.loc[i, "position"] = 1
+                        df.loc[i, "signal"] = -1
+                        current_position = 0
+                        continue
+
+                if (
+                    current_position == 0
+                    and df.loc[i, f"ma_{short_ma}"] > df.loc[i, f"ma_{long_ma}"]
+                ):
+                    df.loc[i, "signal"] = 1
+                df.loc[i, "position"] = current_position
+        else:
+            # Iterate over the rows and set the position
+            for i in range(1, len(df)):
+                if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                    if df.loc[i, "signal"] == -1:
+                        df.loc[i, "position"] = 1
+                        current_position = 0
+                        continue
+                    current_position = 1
+                elif df.loc[i, "signal"] == -1:  # Exit position
+                    df.loc[i, "position"] = current_position
+                    current_position = 0
+                    continue
+                df.loc[i, "position"] = current_position
 
         # Calculate the strategy returns (only when in a long position)
-        df["strategy_returns"] = df["position"].shift(1) * df["open"].pct_change()
+        df["strategy_returns"] = df["position"] * df["close"].pct_change()
         df["strategy_returns2"] = df["strategy_returns"]
 
-        for i in range(1, len(df)):
-            buy_price = df.loc[i - 1, "open"]
-            buy_price_copy = buy_price
-            sell_price = df.loc[i, "open"]
-            sell_price_copy = sell_price
-            if df.loc[i - 1, "position"] == 1 and df.loc[i - 1, "signal"] == 1:
-                # df.loc[i, 'strategy_returns2'] = (df.loc[i,'position'])/(df.loc[i-1, 'position'] * 1.002) -1
-                buy_price = df.loc[i - 1, "open"] * 1.002
-            if df.loc[i, "position"] == 0 and df.loc[i - 1, "position"] != 0:
-                # df.loc[i, 'strategy_returns2'] = (df.loc[i,'position'] * 0.998)/(df.loc[i-1, 'position']) -1
-                sell_price = df.loc[i, "open"] * 0.998
+        # Adjust for trading fees (buy with 0.2% fee, sell with 0.2% fee)
+        df["buy_price"] = df["close"].shift(1) * np.where(
+            df["signal"].shift(1) == 1, 1.002, 1
+        )
+        df["sell_price"] = df["close"] * np.where(df["signal"] == -1, 0.998, 1)
 
-            if buy_price == buy_price_copy and sell_price == sell_price_copy:
-                continue
-
-            df.loc[i, "strategy_returns2"] = sell_price / buy_price - 1
+        # Calculate strategy returns with fees
+        df["strategy_returns2"] = np.where(
+            df["position"] == 1, df["sell_price"] / df["buy_price"] - 1, 0
+        )
 
         # Calculate the cumulative returns
         df["cumulative_returns"] = (1 + df["strategy_returns"]).cumprod()
         df["cumulative_returns2"] = (1 + df["strategy_returns2"]).cumprod()
 
-        # Calculate the benchmark cumulative returns (buy and hold strategy)
-        df["benchmark_returns"] = (1 + df["open"].pct_change()).cumprod()
-        return df
+    if strategy.name == "Trading_Range_Breakout":
+        lookback_period = param1
+
+        df[f"high_{lookback_period}"] = df["high"].rolling(window=lookback_period).max()
+        df[f"low_{lookback_period}"] = df["low"].rolling(window=lookback_period).min()
+
+        # Initialize the signal column with default value 0
+        df["signal"] = 0
+
+        # Generate buy signal: 1 when price breaks above the high
+        df.loc[df["close"] > df[f"high_{lookback_period}"].shift(1), "signal"] = 1
+
+        # Generate sell signal: -1 when price breaks below the low
+        df.loc[df["close"] < df[f"low_{lookback_period}"].shift(1), "signal"] = -1
+
+        # Initialize the position column with default value 0
+        df["position"] = 0
+        df["highest_price"] = np.nan
+        # Variable to track the current position status
+        current_position = 0
+
+        if stop_loss:
+            # Iterate over the rows and set the position
+            for i in range(1, len(df)):
+                if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "close"], df.loc[i, "close"]
+                    )
+                    if df.loc[i, "signal"] == -1:
+                        df.loc[i, "position"] = 1
+                        current_position = 0
+                        continue
+                    elif df.loc[i, "signal"] == 1:
+                        df.loc[i, "signal"] = 0
+
+                    if df.loc[i, "close"] <= df.loc[i, "highest_price"] * (
+                        1 - stop_loss_pct
+                    ):
+                        df.loc[i, "position"] = 1
+                        df.loc[i, "signal"] = -1
+                        current_position = 0
+                        continue
+                    current_position = 1
+                elif (
+                    df.loc[i, "signal"] == -1 and current_position == 1
+                ):  # Exit position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "highest_price"], df.loc[i, "close"]
+                    )
+                    df.loc[i, "position"] = current_position
+                    current_position = 0
+                    continue
+
+                elif (
+                    current_position == 1
+                ):  # Check current_position instead of df position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "highest_price"], df.loc[i, "close"]
+                    )
+                    df.loc[i, "signal"] = 0
+                    if df.loc[i, "close"] <= df.loc[i, "highest_price"] * (
+                        1 - stop_loss_pct
+                    ):
+                        df.loc[i, "position"] = 1
+                        df.loc[i, "signal"] = -1
+                        current_position = 0
+                        continue
+
+                if (
+                    current_position == 0
+                    and df.loc[i, "close"] > df.loc[i, f"high_{lookback_period}"]
+                ):
+                    df.loc[i, "signal"] = 1
+                df.loc[i, "position"] = current_position
+        else:
+            # Iterate over the rows and set the position
+            for i in range(1, len(df)):
+                if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                    if df.loc[i, "signal"] == -1:
+                        df.loc[i, "position"] = 1
+                        current_position = 0
+                        continue
+                    elif df.loc[i, "signal"] == 1:
+                        df.loc[i, "signal"] = 0
+                    current_position = 1
+                elif df.loc[i, "signal"] == -1:  # Exit position
+                    df.loc[i, "position"] = current_position
+                    current_position = 0
+                    continue
+                elif current_position == 1:
+                    df.loc[i, "signal"] = 0
+                df.loc[i, "position"] = current_position
+
+        # Calculate the strategy returns (only when in a long position)
+        df["strategy_returns"] = df["position"] * df["close"].pct_change()
+        df["strategy_returns2"] = df["strategy_returns"]
+
+        # Adjust for trading fees (buy with 0.2% fee, sell with 0.2% fee)
+        df["buy_price"] = df["close"].shift(1) * np.where(
+            df["signal"].shift(1) == 1, 1.002, 1
+        )
+        df["sell_price"] = df["close"] * np.where(df["signal"] == -1, 0.998, 1)
+
+        # Calculate strategy returns with fees
+        df["strategy_returns2"] = np.where(
+            df["position"] == 1, df["sell_price"] / df["buy_price"] - 1, 0
+        )
+
+        # Calculate the cumulative returns
+        df["cumulative_returns"] = (1 + df["strategy_returns"]).cumprod()
+        df["cumulative_returns2"] = (1 + df["strategy_returns2"]).cumprod()
+
+    if strategy.name == "Moving_Average_Convergence_Divergence":
+        fast_period = param1
+        slow_period = param2
+
+        # Calculate MACD components
+        df["ema_fast"] = df["close"].ewm(span=fast_period, adjust=False).mean()
+        df["ema_slow"] = df["close"].ewm(span=slow_period, adjust=False).mean()
+        df["macd"] = df["ema_fast"] - df["ema_slow"]
+        # df["signal_line"] = df["macd"].ewm(span=signal_period, adjust=False).mean()
+
+        # Initialize the signal column with default value 0
+        df["signal"] = 0
+
+        # Generate buy signal: 1 when MACD crosses above zero
+        df.loc[(df["macd"] > 0) & (df["macd"].shift(1) <= 0), "signal"] = 1
+
+        # Generate sell signal: -1 when MACD crosses below zero
+        df.loc[(df["macd"] < 0) & (df["macd"].shift(1) >= 0), "signal"] = -1
+
+        # Initialize the position column with default value 0
+        df["position"] = 0
+        df["highest_price"] = np.nan
+        # Variable to track the current position status
+        current_position = 0
+
+        if stop_loss:
+            # Iterate over the rows and set the position
+            for i in range(1, len(df)):
+                if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "close"], df.loc[i, "close"]
+                    )
+                    if df.loc[i, "signal"] == -1:
+                        df.loc[i, "position"] = 1
+                        current_position = 0
+                        continue
+
+                    if df.loc[i, "close"] <= df.loc[i, "highest_price"] * (
+                        1 - stop_loss_pct
+                    ):
+                        df.loc[i, "position"] = 1
+                        df.loc[i, "signal"] = -1
+                        current_position = 0
+                        continue
+                    current_position = 1
+                elif (
+                    df.loc[i, "signal"] == -1 and current_position == 1
+                ):  # Exit position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "highest_price"], df.loc[i, "close"]
+                    )
+                    df.loc[i, "position"] = current_position
+                    current_position = 0
+                    continue
+
+                elif (
+                    current_position == 1
+                ):  # Check current_position instead of df position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "highest_price"], df.loc[i, "close"]
+                    )
+                    if df.loc[i, "close"] <= df.loc[i, "highest_price"] * (
+                        1 - stop_loss_pct
+                    ):
+                        df.loc[i, "position"] = 1
+                        df.loc[i, "signal"] = -1
+                        current_position = 0
+                        continue
+
+                if current_position == 0 and df.loc[i, "macd"] > 0:
+                    df.loc[i, "signal"] = 1
+                df.loc[i, "position"] = current_position
+        else:
+            # Iterate over the rows and set the position
+            for i in range(1, len(df)):
+                if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                    if df.loc[i, "signal"] == -1:
+                        df.loc[i, "position"] = 1
+                        current_position = 0
+                        continue
+                    current_position = 1
+                elif df.loc[i, "signal"] == -1:  # Exit position
+                    df.loc[i, "position"] = current_position
+                    current_position = 0
+                    continue
+                df.loc[i, "position"] = current_position
+
+        # Calculate the strategy returns (only when in a long position)
+        df["strategy_returns"] = df["position"] * df["close"].pct_change()
+        df["strategy_returns2"] = df["strategy_returns"]
+
+        # Adjust for trading fees (buy with 0.2% fee, sell with 0.2% fee)
+        df["buy_price"] = df["close"].shift(1) * np.where(
+            df["signal"].shift(1) == 1, 1.002, 1
+        )
+        df["sell_price"] = df["close"] * np.where(df["signal"] == -1, 0.998, 1)
+
+        # Calculate strategy returns with fees
+        df["strategy_returns2"] = np.where(
+            df["position"] == 1, df["sell_price"] / df["buy_price"] - 1, 0
+        )
+
+        # Calculate the cumulative returns
+        df["cumulative_returns"] = (1 + df["strategy_returns"]).cumprod()
+        df["cumulative_returns2"] = (1 + df["strategy_returns2"]).cumprod()
+
+    if strategy.name == "Rate_of_Change":
+        momentum_period = param1
+
+        df["momentum"] = df["close"].pct_change(periods=momentum_period)
+
+        # Initialize the signal column with default value 0
+        df["signal"] = 0
+
+        # Generate buy signal: 1 when momentum crosses above zero
+        df.loc[
+            (df["momentum"] > 0) & (df["momentum"].shift(1).fillna(0) <= 0), "signal"
+        ] = 1
+
+        # Generate sell signal: -1 when momentum crosses below zero
+        df.loc[
+            (df["momentum"] < 0) & (df["momentum"].shift(1).fillna(0) >= 0), "signal"
+        ] = -1
+
+        # Initialize the position column with default value 0
+        df["position"] = 0
+        df["highest_price"] = np.nan
+        # Variable to track the current position status
+        current_position = 0
+
+        if stop_loss:
+            # Iterate over the rows and set the position
+            for i in range(1, len(df)):
+                if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "close"], df.loc[i, "close"]
+                    )
+                    if df.loc[i, "signal"] == -1:
+                        df.loc[i, "position"] = 1
+                        current_position = 0
+                        continue
+
+                    if df.loc[i, "close"] <= df.loc[i, "highest_price"] * (
+                        1 - stop_loss_pct
+                    ):
+                        df.loc[i, "position"] = 1
+                        df.loc[i, "signal"] = -1
+                        current_position = 0
+                        continue
+                    current_position = 1
+                elif (
+                    df.loc[i, "signal"] == -1 and current_position == 1
+                ):  # Exit position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "highest_price"], df.loc[i, "close"]
+                    )
+                    df.loc[i, "position"] = current_position
+                    current_position = 0
+                    continue
+
+                elif (
+                    current_position == 1
+                ):  # Check current_position instead of df position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "highest_price"], df.loc[i, "close"]
+                    )
+                    if df.loc[i, "close"] <= df.loc[i, "highest_price"] * (
+                        1 - stop_loss_pct
+                    ):
+                        df.loc[i, "position"] = 1
+                        df.loc[i, "signal"] = -1
+                        current_position = 0
+                        continue
+
+                if current_position == 0 and df.loc[i, "momentum"] > 0:
+                    df.loc[i, "signal"] = 1
+                df.loc[i, "position"] = current_position
+        else:
+            # Iterate over the rows and set the position
+            for i in range(1, len(df)):
+                if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                    if df.loc[i, "signal"] == -1:
+                        df.loc[i, "position"] = 1
+                        current_position = 0
+                        continue
+                    current_position = 1
+                elif df.loc[i, "signal"] == -1:  # Exit position
+                    df.loc[i, "position"] = current_position
+                    current_position = 0
+                    continue
+                df.loc[i, "position"] = current_position
+
+        # Calculate the strategy returns (only when in a long position)
+        df["strategy_returns"] = df["position"] * df["close"].pct_change()
+        df["strategy_returns2"] = df["strategy_returns"]
+
+        # Adjust for trading fees (buy with 0.2% fee, sell with 0.2% fee)
+        df["buy_price"] = df["close"].shift(1) * np.where(
+            df["signal"].shift(1) == 1, 1.002, 1
+        )
+        df["sell_price"] = df["close"] * np.where(df["signal"] == -1, 0.998, 1)
+
+        # Calculate strategy returns with fees
+        df["strategy_returns2"] = np.where(
+            df["position"] == 1, df["sell_price"] / df["buy_price"] - 1, 0
+        )
+
+        # Calculate the cumulative returns
+        df["cumulative_returns"] = (1 + df["strategy_returns"]).cumprod()
+        df["cumulative_returns2"] = (1 + df["strategy_returns2"]).cumprod()
+
+    if strategy.name == "On_Balance_Volume":
+        short_ma = param1
+        long_ma = param2
+        df["short_volume_ma"] = df["volume_krw"].rolling(short_ma).mean()
+        df["long_volume_ma"] = df["volume_krw"].rolling(long_ma).mean()
+
+        # Initialize the signal column with default value 0
+        df["signal"] = 0
+
+        # Generate buy signal: 1 when MACD crosses above zero
+        df.loc[
+            (df["short_volume_ma"] > df["long_volume_ma"])
+            & (
+                df["short_volume_ma"].shift(1).fillna(0)
+                <= df["long_volume_ma"].shift(1).fillna(0)
+            ),
+            "signal",
+        ] = 1
+
+        # Generate sell signal: -1 when MACD crosses below zero
+        df.loc[
+            (df["short_volume_ma"] < df["long_volume_ma"])
+            & (
+                df["short_volume_ma"].shift(1).fillna(0)
+                >= df["long_volume_ma"].shift(1).fillna(0)
+            ),
+            "signal",
+        ] = -1
+
+        # Initialize the position column with default value 0
+        df["position"] = 0
+        df["highest_price"] = np.nan
+        # Variable to track the current position status
+        current_position = 0
+
+        if stop_loss:
+            # Iterate over the rows and set the position
+            for i in range(1, len(df)):
+                if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "close"], df.loc[i, "close"]
+                    )
+                    if df.loc[i, "signal"] == -1:
+                        df.loc[i, "position"] = 1
+                        current_position = 0
+                        continue
+
+                    if df.loc[i, "close"] <= df.loc[i, "highest_price"] * (
+                        1 - stop_loss_pct
+                    ):
+                        df.loc[i, "position"] = 1
+                        df.loc[i, "signal"] = -1
+                        current_position = 0
+                        continue
+                    current_position = 1
+                elif (
+                    df.loc[i, "signal"] == -1 and current_position == 1
+                ):  # Exit position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "highest_price"], df.loc[i, "close"]
+                    )
+                    df.loc[i, "position"] = current_position
+                    current_position = 0
+                    continue
+
+                elif (
+                    current_position == 1
+                ):  # Check current_position instead of df position
+                    df.loc[i, "highest_price"] = max(
+                        df.loc[i - 1, "highest_price"], df.loc[i, "close"]
+                    )
+                    if df.loc[i, "close"] <= df.loc[i, "highest_price"] * (
+                        1 - stop_loss_pct
+                    ):
+                        df.loc[i, "position"] = 1
+                        df.loc[i, "signal"] = -1
+                        current_position = 0
+                        continue
+
+                if (
+                    current_position == 0
+                    and df.loc[i, "short_volume_ma"] > df.loc[i, "long_volume_ma"]
+                ):
+                    df.loc[i, "signal"] = 1
+                df.loc[i, "position"] = current_position
+        else:
+            # Iterate over the rows and set the position
+            for i in range(1, len(df)):
+                if df.loc[i - 1, "signal"] == 1:  # Enter long position
+                    if df.loc[i, "signal"] == -1:
+                        df.loc[i, "position"] = 1
+                        current_position = 0
+                        continue
+                    current_position = 1
+                elif df.loc[i, "signal"] == -1:  # Exit position
+                    df.loc[i, "position"] = current_position
+                    current_position = 0
+                    continue
+                df.loc[i, "position"] = current_position
+
+        # Calculate the strategy returns (only when in a long position)
+        df["strategy_returns"] = df["position"] * df["close"].pct_change()
+        df["strategy_returns2"] = df["strategy_returns"]
+
+        # Adjust for trading fees (buy with 0.2% fee, sell with 0.2% fee)
+        df["buy_price"] = df["close"].shift(1) * np.where(
+            df["signal"].shift(1) == 1, 1.002, 1
+        )
+        df["sell_price"] = df["close"] * np.where(df["signal"] == -1, 0.998, 1)
+
+        # Calculate strategy returns with fees
+        df["strategy_returns2"] = np.where(
+            df["position"] == 1, df["sell_price"] / df["buy_price"] - 1, 0
+        )
+
+        # Calculate the cumulative returns
+        df["cumulative_returns"] = (1 + df["strategy_returns"]).cumprod()
+        df["cumulative_returns2"] = (1 + df["strategy_returns2"]).cumprod()
+
+    return df
 
 
 def get_rounded(number):
@@ -499,6 +1211,10 @@ def get_mdd(df):
 
 
 def get_win_rate(df):
+    # Check if the 'position' column exists
+    if "position" not in df.columns:
+        return None, None, None
+
     # Initialize variables to track buy and win times
     buy_time = 0
     win_time = 0
@@ -526,10 +1242,13 @@ def get_win_rate(df):
     else:
         win_rate = 0
 
-    return win_rate
+    return win_rate, buy_time, win_time
 
 
 def get_gain_loss_ratio(df):
+    # Check if the 'position' column exists
+    if "position" not in df.columns:
+        return None
     holding_period = False  # Track whether we're in a holding period
     start_returns = 0  # To store the returns at the start of the buy signal
     win_list = []
@@ -571,6 +1290,9 @@ def get_gain_loss_ratio(df):
 
 
 def get_holding_time_ratio(df):
+    # Check if the 'position' column exists
+    if "position" not in df.columns:
+        return None
     # Step 1: Filter rows where there is no NaN in any column except 'highest_price' and 'exit_price'
     df_no_na_except_cols = df.dropna(
         subset=[col for col in df.columns if col not in ["highest_price", "exit_price"]]
@@ -593,6 +1315,24 @@ def get_holding_time_ratio(df):
         position_time_ratio_except_cols = 0
 
     return position_time_ratio_except_cols
+
+
+def get_sharpe_ratio(df, risk_free_rate=0.03):
+    # Calculate daily returns
+    daily_returns = df["cumulative_returns2"].pct_change()
+
+    # Calculate excess returns (over risk-free rate)
+    excess_returns = daily_returns - (
+        risk_free_rate / 365
+    )  # Convert annual risk-free rate to daily
+
+    # Calculate annualized Sharpe ratio using 365 days for crypto
+    if daily_returns.std() != 0:
+        sharpe_ratio = np.sqrt(365) * (excess_returns.mean() / daily_returns.std())
+    else:
+        sharpe_ratio = 0
+
+    return float(sharpe_ratio)
 
 
 def get_performance(df):
@@ -621,23 +1361,28 @@ def get_performance(df):
     mdd = get_mdd(df)
 
     # get win rate
-    win_rate = get_win_rate(df)
+    win_rate, buy_time, win_time = get_win_rate(df)
 
     # get gain loss ratio
     gain_loss_ratio = get_gain_loss_ratio(df)
 
-    if type(gain_loss_ratio) != str:
+    if type(gain_loss_ratio) != str and gain_loss_ratio != None:
         gain_loss_ratio = round(gain_loss_ratio, 2)
 
     # holding percent
     holding_time_ratio = get_holding_time_ratio(df)
 
+    # get sharpe ratio
+    sharpe_ratio = get_sharpe_ratio(df)
     return {
         "total_return": tr,
         "cagr": cagr,
         "mdd": mdd,
         "win_rate": win_rate,
+        "buy_time": buy_time,
+        "win_time": win_time,
         "gain_loss_ratio": gain_loss_ratio,
         "holding_time_ratio": holding_time_ratio,
         "investing_period": days,
+        "sharpe_ratio": sharpe_ratio,
     }

@@ -75,7 +75,7 @@ def update_strategies_performance():
             performance_30d,
             performance_1y,
         ) = calculate_strategy_performance(
-            strategy=strategy, time_period=timedelta(days=381)
+            strategy=strategy, time_period=timedelta(days=450)
         )
         last_update = str(datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
         redis_client.hset(f"strategy:{strategy.id}:update", "last_update", last_update)
@@ -116,9 +116,12 @@ def update_and_execute():
         execute_strategies.delay()
 
         current = datetime.now()
-        if current.minute == 0:
-            update_coins_performance()
-            update_strategies_performance()
+
+        update_coins_performance()
+        update_strategies_performance()
+        # if current.minute == 0:
+        #     update_coins_performance()
+        #     update_strategies_performance()
 
     finally:
         # Ensure the lock is released when the task is done
@@ -126,12 +129,15 @@ def update_and_execute():
 
 
 @shared_task
-def execute_user_strategy(user_strategy_id):
+def execute_user_strategy(user_strategy_id, first_execution=False):
     print("task execute_user_strategy executed.")
     user_strategy = db.session.get(UserStrategy, user_strategy_id)
+    print(user_strategy, user_strategy.active)
+    if first_execution:
+        user_strategy.active = True
+    print(user_strategy, user_strategy.active)
     if user_strategy and user_strategy.active:
         user_strategy.execute()
-        db.session.commit()
 
 
 @shared_task

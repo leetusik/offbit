@@ -19,7 +19,12 @@ from flask_login import current_user, login_required
 
 from app import db
 from app.main import bp
-from app.main.forms import EmptyForm, MakeStrategyForm, SetBacktestExecutionTimeForm
+from app.main.forms import (
+    EmptyForm,
+    MakeStrategyForm,
+    SetBacktestOneParamForm,
+    SetBacktestTwoParamsForm,
+)
 from app.models import Coin, Strategy, UserStrategy
 from app.utils.performance_utils import get_backtest, get_performance
 
@@ -124,16 +129,39 @@ def strategies():
 
 @bp.route("/strategy/<strategy_id>", methods=["GET", "POST"])
 def strategy(strategy_id):
+
+    strategy = db.first_or_404(sa.select(Strategy).where(Strategy.id == strategy_id))
+
     # Retrieve the strategy object from the database
-    execution_time = session.get("execution_time", None)
+    # execution_time = session.get("execution_time", strategy.base_execution_time)
+    # param1 = session.get("param1", strategy.base_param1)
+    # param2 = session.get("param2", strategy.base_param2)
+    execution_time = (
+        datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0).time()
+    )
+    param1 = strategy.base_param1
+    param2 = strategy.base_param2
+    stop_loss = session.get("stop_loss", None)
+
     if execution_time:
         # Convert to a datetime.time object
-        execution_time = datetime.strptime(execution_time, "%H:%M:%S").time()
+        execution_time = datetime.strptime(str(execution_time), "%H:%M:%S").time()
+    if param1:
+        param1 = int(param1)
+    if param2:
+        param2 = int(param2)
+
     pre_data = {
         "execution_time": execution_time,
+        "param1": param1,
+        "param2": param2,
+        "stop_loss": stop_loss,
     }
-    form = SetBacktestExecutionTimeForm(data=pre_data)
-    strategy = db.first_or_404(sa.select(Strategy).where(Strategy.id == strategy_id))
+
+    if strategy.base_param2:
+        form = SetBacktestTwoParamsForm(data=pre_data)
+    else:
+        form = SetBacktestOneParamForm(data=pre_data)
 
     # get selected_coin
     selected_coin = request.args.get("coin")  # No need for a default value here
@@ -147,7 +175,19 @@ def strategy(strategy_id):
     # If the form is submitted and valid, pass the execution time as an argument
     if form.validate_on_submit():
         execution_time = form.execution_time.data
+        param1 = form.param1.data
+        stop_loss = form.stop_loss.data
+        if strategy.base_param2:
+            param2 = form.param2.data
+            session["param2"] = str(
+                form.param2.data
+            )  # Convert int to string for session storage
+        if stop_loss:
+            session["stop_loss"] = str(stop_loss)
+
         session["execution_time"] = str(form.execution_time.data)
+        session["param1"] = str(form.param1.data)
+
         # change execution_time to utc #
         user_timezone = session.get("timezone", "UTC")
         user_timezone = pytz.timezone(user_timezone)
@@ -161,31 +201,38 @@ def strategy(strategy_id):
         df = get_backtest(
             strategy=strategy,
             selected_coin=selected_coin,
+            param1=param1,
+            param2=param2,
+            stop_loss=stop_loss,
             execution_time=datetime(1970, 1, 1, utc_time.hour, utc_time.minute),
         )
+
     else:
-        if execution_time != None:
-            execution_time = form.execution_time.data
-
-            user_timezone = session.get("timezone", "UTC")
-            user_timezone = pytz.timezone(user_timezone)
-            # Create a datetime object for today with the given time
-            local_datetime = datetime.combine(datetime.today(), execution_time)
-
-            # Localize the time to the given timezone
-            localized_time = user_timezone.localize(local_datetime)
-            # Convert to UTC
-            utc_time = localized_time.astimezone(pytz.utc)
-            df = get_backtest(
-                strategy=strategy,
-                selected_coin=selected_coin,
-                execution_time=datetime(1970, 1, 1, utc_time.hour, utc_time.minute),
-            )
+        execution_time = form.execution_time.data
+        param1 = form.param1.data
+        if strategy.base_param2:
+            param2 = form.param2.data
         else:
-            df = get_backtest(
-                strategy=strategy,
-                selected_coin=selected_coin,
-            )
+            param2 = None
+        stop_loss = form.stop_loss.data
+
+        user_timezone = session.get("timezone", "UTC")
+        user_timezone = pytz.timezone(user_timezone)
+        # Create a datetime object for today with the given time
+        local_datetime = datetime.combine(datetime.today(), execution_time)
+
+        # Localize the time to the given timezone
+        localized_time = user_timezone.localize(local_datetime)
+        # Convert to UTC
+        utc_time = localized_time.astimezone(pytz.utc)
+        df = get_backtest(
+            strategy=strategy,
+            selected_coin=selected_coin,
+            param1=param1,
+            param2=param2,
+            stop_loss=stop_loss,
+            execution_time=datetime(1970, 1, 1, utc_time.hour, utc_time.minute),
+        )
 
     # Convert the time_utc column from string to datetime (assumed to be in UTC)
     df["time_utc"] = pd.to_datetime(df["time_utc"], utc=True)  # Ensure it's tz-aware
@@ -232,7 +279,6 @@ def strategy(strategy_id):
     ]
     performance_dict = get_performance(df)
     # Pass data to the template
-    # df.to_csv("temp.csv")
 
     return render_template(
         "strategy.html",
@@ -251,7 +297,18 @@ def strategy(strategy_id):
 def make_strategy():
     form = MakeStrategyForm()
     if form.validate_on_submit():
-        strategy = Strategy(name=form.name.data, description=form.description.data)
+        name = form.name.data
+        description = form.description.data
+        base_execution_time = form.base_execution_time.data
+        base_param1 = form.base_param1.data
+        base_param2 = form.base_param2.data
+        strategy = Strategy(
+            name=name,
+            description=description,
+            base_execution_time=base_execution_time,
+            base_param1=base_param1,
+            base_param2=base_param2,
+        )
         coins = form.coins.data
         for coin in coins:
             strategy.coins.append(coin)

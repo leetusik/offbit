@@ -8,12 +8,13 @@ from flask import flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, logout_user
 
 from app import db
-from app.models import Coin, Strategy, User, UserStrategy
+from app.models import Coin, MembershipType, Strategy, User, UserStrategy
 from app.user import bp
 from app.user.forms import (
     EmptyForm,
     SetAPIKeyForm,
-    SetUserStrategyForm,
+    SetOneParamUserStrategyForm,
+    SetTwoParamUserStrategyForm,
     StartUserStrategyForm,
     UserResetPasswordForm,
 )
@@ -186,17 +187,38 @@ def set_strategy(name):
         .where(UserStrategy.strategy.has(name=name))
         .where(UserStrategy.user_id == current_user.id)
     )
-    pre_data = {
-        "currency": user_strategy.target_currency.name,
-        "investing_limit": user_strategy.investing_limit,
-        "execution_time": user_strategy.execution_time,
-    }
 
-    form = SetUserStrategyForm(data=pre_data, strategy=user_strategy.strategy)
+    if user_strategy.strategy.base_param2:
+        pre_data = {
+            "currency": user_strategy.target_currency.name,
+            "investing_limit": user_strategy.investing_limit,
+            "execution_time": user_strategy.execution_time,
+            "param1": user_strategy.param1,
+            "param2": user_strategy.param2,
+            "stop_loss": user_strategy.stop_loss,
+        }
+
+        form = SetTwoParamUserStrategyForm(
+            data=pre_data, strategy=user_strategy.strategy
+        )
+    else:
+        pre_data = {
+            "currency": user_strategy.target_currency.name,
+            "investing_limit": user_strategy.investing_limit,
+            "execution_time": user_strategy.execution_time,
+            "param1": user_strategy.param1,
+            "stop_loss": user_strategy.stop_loss,
+        }
+        form = SetOneParamUserStrategyForm(
+            data=pre_data, strategy=user_strategy.strategy
+        )
 
     if form.validate_on_submit():
         investing_limit = form.investing_limit.data
         execution_time = form.execution_time.data
+        param1 = form.param1.data
+        param2 = form.param2.data
+        stop_loss = form.stop_loss.data
         target_currency = form.currency.data
         target_currency = db.session.scalar(
             sa.select(Coin).where(Coin.name == target_currency)
@@ -217,6 +239,11 @@ def set_strategy(name):
         user_strategy.target_currency = target_currency
         user_strategy.investing_limit = investing_limit
         user_strategy.set_execution_time(str(utc_time.time()))
+        user_strategy.param1 = param1
+        user_strategy.param2 = param2
+        user_strategy.stop_loss = stop_loss
+
+        db.session.commit()
 
         flash(f"{user_strategy.strategy.name} 전략 투자 설정이 완료되었습니다.")
         return redirect(url_for("user.dashboard"))
@@ -318,3 +345,19 @@ def unset_api_key():
 
     flash("API 연동이 성공적으로 해제되었습니다.", "success")
     return redirect(url_for("user.user_info"))
+
+
+@bp.route("/set_airplane_membership", methods=["GET"])
+@login_required
+def set_airplane_membership():
+    if not current_user.admin:
+        flash("관리자 권한이 필요합니다.", "danger")
+        return redirect(url_for("user.dashboard"))
+
+    try:
+        current_user.set_membership(MembershipType.AIRPLANE, None)
+        flash("멤버십이 성공적으로 AIRPLANE으로 변경되었습니다.", "success")
+    except Exception as e:
+        flash(f"멤버십 변경 중 오류가 발생했습니다: {str(e)}", "danger")
+
+    return redirect(url_for("user.dashboard"))

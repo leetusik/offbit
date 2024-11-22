@@ -1,8 +1,8 @@
-"""init
+"""Initial migration
 
-Revision ID: b1bd1aff0293
+Revision ID: bdf8b0f0321d
 Revises: 
-Create Date: 2024-10-24 23:44:16.178718
+Create Date: 2024-11-22 07:44:35.852878
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'b1bd1aff0293'
+revision = 'bdf8b0f0321d'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -21,6 +21,8 @@ def upgrade():
     op.create_table('coin',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=64), nullable=False),
+    sa.Column('historical_data', sa.LargeBinary(), nullable=True),
+    sa.Column('short_historical_data', sa.LargeBinary(), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     with op.batch_alter_table('coin', schema=None) as batch_op:
@@ -29,9 +31,10 @@ def upgrade():
     op.create_table('strategy',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=64), nullable=False),
+    sa.Column('base_execution_time', sa.Time(), nullable=True),
+    sa.Column('base_param1', sa.Integer(), nullable=True),
+    sa.Column('base_param2', sa.Integer(), nullable=True),
     sa.Column('description', sa.String(length=255), nullable=True),
-    sa.Column('historical_data', sa.LargeBinary(), nullable=True),
-    sa.Column('short_historical_data', sa.LargeBinary(), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     with op.batch_alter_table('strategy', schema=None) as batch_op:
@@ -41,10 +44,12 @@ def upgrade():
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('username', sa.String(length=64), nullable=False),
     sa.Column('email', sa.String(length=120), nullable=False),
+    sa.Column('admin', sa.Boolean(), nullable=False),
     sa.Column('password_hash', sa.String(length=256), nullable=True),
     sa.Column('open_api_key_access_upbit', sa.LargeBinary(), nullable=True),
     sa.Column('open_api_key_secret_upbit', sa.LargeBinary(), nullable=True),
     sa.Column('open_api_key_expiration', sa.DateTime(), nullable=True),
+    sa.Column('open_api_key_access_upbit_hash', sa.LargeBinary(), nullable=True),
     sa.Column('verification_code', sa.Integer(), nullable=True),
     sa.Column('verification_code_expiration', sa.DateTime(), nullable=True),
     sa.Column('membership_type', sa.Enum('BIKE', 'MOTORCYCLE', 'CAR', 'AIRPLANE', name='membershiptype'), nullable=False),
@@ -70,10 +75,10 @@ def upgrade():
     sa.Column('coin_id', sa.Integer(), nullable=False),
     sa.Column('active', sa.Boolean(), nullable=False),
     sa.Column('execution_time', sa.Time(), nullable=True),
+    sa.Column('target_price', sa.Float(), nullable=True),
     sa.Column('_investing_limit', sa.Integer(), nullable=False),
     sa.Column('holding_position', sa.Boolean(), nullable=False),
     sa.Column('sell_needed', sa.Float(), nullable=False),
-    sa.Column('historical_data_resampled', sa.LargeBinary(), nullable=True),
     sa.ForeignKeyConstraint(['coin_id'], ['coin.id'], ),
     sa.ForeignKeyConstraint(['strategy_id'], ['strategy.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),

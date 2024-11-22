@@ -28,7 +28,8 @@ def get_candles(
 ):
     if start is None:
         # Default start to one year before the current date and time
-        start = (datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d %H:%M:%S")
+        # start = (datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d %H:%M:%S")
+        start = "2017-09-01 00:00:00"
 
     times = get_time_intervals(
         initial_time_str=start,
@@ -56,7 +57,6 @@ def get_candles(
     for t in times:
         url = f"https://api.upbit.com/v1/candles/{interval}/{interval2}?market={market}&count={count}&to={t}"
         headers = {"accept": "application/json"}
-        print(t)
         while True:
             response = requests.get(url, headers=headers)
 
@@ -159,3 +159,36 @@ def concat_candles(long_df, short_df):
     final_df.reset_index(drop=True, inplace=True)
 
     return final_df
+
+
+def resample_df(df, execution_time):
+    # Create an explicit copy of the DataFrame
+    df = df.copy()
+
+    df["time_utc"] = pd.to_datetime(df["time_utc"])
+
+    df.set_index("time_utc", inplace=True)
+
+    # Assuming execution_time is a datetime object, with specific hour and minute (e.g., 13:12)
+    daily_df = (
+        df.resample(
+            "24h",
+            offset=pd.Timedelta(
+                hours=execution_time.hour, minutes=execution_time.minute
+            ),
+            origin="epoch",
+        )
+        .agg(
+            {
+                "open": "first",
+                "high": "max",
+                "low": "min",
+                "close": "last",
+                "volume_krw": "sum",
+                "volume_market": "sum",
+            }
+        )
+        .reset_index()
+    )
+
+    return daily_df

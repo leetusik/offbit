@@ -113,12 +113,12 @@ def create_app(config_class=Config):
 
         if not os.path.exists("logs"):
             os.mkdir("logs")
-        file_handler = RotatingFileHandler(
-            "logs/offbit.log",
-            maxBytes=10240,
-            backupCount=10,
-        )
-        # file_handler = logging.FileHandler("/app/logs/offbit.log")
+        # file_handler = RotatingFileHandler(
+        #     "logs/offbit.log",
+        #     maxBytes=10240,
+        #     backupCount=10,
+        # )
+        file_handler = logging.FileHandler("logs/offbit.log")
 
         file_handler.setFormatter(
             logging.Formatter(
@@ -131,9 +131,9 @@ def create_app(config_class=Config):
         app.logger.setLevel(logging.INFO)
         app.logger.info("Offbit startup")
 
-    # Start the Redis listener using a Celery task
-    app.extensions["celery"].send_task("app.tasks.start_redis_listener")
-    app.extensions["celery"].send_task("app.tasks.start_websocket_client")
+    # # Start the Redis listener using a Celery task
+    # app.extensions["celery"].send_task("app.tasks.start_redis_listener")
+    # app.extensions["celery"].send_task("app.tasks.start_websocket_client")
 
     return app
 

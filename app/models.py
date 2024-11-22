@@ -256,9 +256,13 @@ class Coin(db.Model):
         back_populates="target_currency",
         passive_deletes=True,  # Ensure related UserStrategy objects are handled on delete
     )
-    # many to many with Strategy
+    # Update the strategies relationship to include cascade delete
     strategies: so.Mapped[list["Strategy"]] = so.relationship(
-        "Strategy", secondary=coin_strategies, back_populates="coins"
+        "Strategy",
+        secondary=coin_strategies,
+        back_populates="coins",
+        cascade="all, delete",  # Add cascade delete
+        passive_deletes=True,  # Enable passive deletes
     )
 
     def save_historical_data(self, df: pd.DataFrame):
@@ -309,12 +313,12 @@ class Coin(db.Model):
             last_time_utc = pd.to_datetime(last_row["time_utc"])
 
             # Compare the two naive datetime objects
-            if last_time_utc + timedelta(minutes=50) < formatted_now_naive:
+            if last_time_utc + timedelta(hours=2, minutes=50) < formatted_now_naive:
                 long_df = get_candles(market=tickers[self.name])
 
-        now_minus_1hour = datetime.now(timezone.utc) - timedelta(hours=1)
-        now_minus_1hour = now_minus_1hour.strftime("%Y-%m-%d %H:%M:%S")
-        short_df = get_candles(market=tickers[self.name], start=now_minus_1hour)
+        now_minus_3hour = datetime.now(timezone.utc) - timedelta(hours=3)
+        now_minus_3hour = now_minus_3hour.strftime("%Y-%m-%d %H:%M:%S")
+        short_df = get_candles(market=tickers[self.name], start=now_minus_3hour)
 
         final_df = concat_candles(long_df=long_df, short_df=short_df)
 
@@ -334,60 +338,62 @@ class Strategy(db.Model):
         index=True,
         unique=True,
     )
+    base_execution_time: so.Mapped[Optional[datetime.time]] = so.mapped_column(
+        sa.Time, nullable=True
+    )
+    base_param1: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, nullable=True)
+    base_param2: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, nullable=True)
+
     description: so.Mapped[Optional[str]] = so.mapped_column(
         sa.String(255),
         nullable=True,
     )
 
-    # Many-to-many relationship via UserStrategy
+    # Update the users relationship to ensure cascade delete
     users: so.Mapped["UserStrategy"] = so.relationship(
         "UserStrategy",
         back_populates="strategy",
-        cascade="all, delete-orphan",
+        cascade="all, delete-orphan",  # This ensures UserStrategy records are deleted
+        passive_deletes=True,  # Enable passive deletes
     )
 
-    # many to many with Strategy
+    # Update the coins relationship to include cascade delete
     coins: so.Mapped[list["Coin"]] = so.relationship(
-        "Coin", secondary=coin_strategies, back_populates="strategies"
+        "Coin",
+        secondary=coin_strategies,
+        back_populates="strategies",
+        cascade="all, delete",  # Add cascade delete
+        passive_deletes=True,  # Enable passive deletes
     )
 
-    def execute_logic_for_user(
-        self, user_strategy: "UserStrategy", manual_start: bool = False
-    ):
+    def execute_logic_for_user(self, user_strategy: "UserStrategy"):
         """The core strategy logic, executed for a specific user."""
         # check if the historical data is updated.
-        if not manual_start:
-            while True:
-                print(f"{user_strategy} started")
-                # Assuming formatted_now is a datetime object without seconds (formatted_now = datetime.now().replace(second=0, microsecond=0))
-                formatted_now = datetime.now(timezone.utc).replace(
-                    second=0, microsecond=0
-                )  # Convert formatted_now to naive if it has timezone info
-                formatted_now_naive = formatted_now.replace(tzinfo=None)
+        while True:
+            print(f"{user_strategy} started")
+            # Assuming formatted_now is a datetime object without seconds (formatted_now = datetime.now().replace(second=0, microsecond=0))
+            formatted_now = datetime.now(timezone.utc).replace(
+                second=0, microsecond=0
+            )  # Convert formatted_now to naive if it has timezone info
+            formatted_now_naive = formatted_now.replace(tzinfo=None)
 
-                short_historical_data = (
-                    user_strategy.target_currency.get_short_historical_data()
-                )
-                # Get the last row of the DataFrame
-                last_row = short_historical_data.iloc[-1]
-
-                # Convert the 'time_utc' column value from the last row to a datetime object
-                last_time_utc = pd.to_datetime(last_row["time_utc"])
-
-                if last_time_utc == formatted_now_naive:
-                    print(f"{user_strategy} data update confirmed")
-                    break
-                else:
-                    user_strategy.target_currency.make_historical_data()
-                    current_app.logger.info(
-                        f"User: {user_strategy.user.username}, no historical data updated. try again."
-                    )
-        else:
             short_historical_data = (
                 user_strategy.target_currency.get_short_historical_data()
             )
-            if short_historical_data is None or short_historical_data.empty:
+            # Get the last row of the DataFrame
+            last_row = short_historical_data.iloc[-1]
+
+            # Convert the 'time_utc' column value from the last row to a datetime object
+            last_time_utc = pd.to_datetime(last_row["time_utc"])
+
+            if last_time_utc == formatted_now_naive:
+                print(f"{user_strategy} data update confirmed")
+                break
+            else:
                 user_strategy.target_currency.make_historical_data()
+                current_app.logger.info(
+                    f"User: {user_strategy.user.username}, no historical data updated. try again."
+                )
 
         try:
             upbit = user_strategy.user.create_upbit_client()
@@ -396,22 +402,32 @@ class Strategy(db.Model):
                 coin_balance: float = upbit.get_balance(
                     tickers[user_strategy.target_currency.name]
                 )
-                sell_needed: float = min(coin_balance, user_strategy.sell_needed)
-                print(sell_needed)
+                if user_strategy.sell_needed > coin_balance:
+                    raise ValueError(
+                        f"{user_strategy.target_currency.name} 현재 보유 수량({coin_balance})이 판매 수량({user_strategy.sell_needed})보다 적습니다."
+                    )
+                # sell_needed: float = min(coin_balance, user_strategy.sell_needed)
+                sell_needed = user_strategy.sell_needed
+
             else:
                 krw_balance: float = upbit.get_balance()
                 buy_needed: float = min(
                     krw_balance * 0.9995, user_strategy.investing_limit
                 )
-                print(buy_needed)
+                if buy_needed < 100000:
+                    raise ValueError(
+                        f"{user_strategy.user.username} 현재 보유 원화({krw_balance})이 최소 주문 금액({100000})보다 적습니다."
+                    )
 
             # Buy & sell condition check and execute order
             condition = get_condition(
                 self.name,
                 user_strategy.execution_time,
                 user_strategy.holding_position,
+                user_strategy.param1,
+                user_strategy.param2,
+                user_strategy.stop_loss,
                 short_historical_data,
-                manual_start=manual_start,
             )
             # condition = "buy"
             print(f"condition: {condition}")
@@ -434,7 +450,6 @@ class Strategy(db.Model):
 
                 user_strategy.sell_needed = executed_volume
                 user_strategy.holding_position = True
-                db.session.commit()
 
             elif condition == "sell":
                 sell = upbit.sell_market_order(
@@ -459,7 +474,7 @@ class Strategy(db.Model):
                 user_strategy.sell_needed = 0
                 user_strategy.holding_position = False
 
-                db.session.commit()
+            db.session.commit()
 
             # # Save data
             # save_data()
@@ -502,6 +517,10 @@ class UserStrategy(db.Model):
     execution_time: so.Mapped[Optional[datetime.time]] = so.mapped_column(
         sa.Time, nullable=True
     )
+
+    param1: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, nullable=True)
+    param2: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, nullable=True)
+    stop_loss: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, nullable=True)
 
     # Relationships
     user: so.Mapped["User"] = so.relationship(
@@ -601,10 +620,9 @@ class UserStrategy(db.Model):
             return (False, f"no data")
         # Recalculate the user's available balance
         if self.check_investing_limit():
-            self.strategy.execute_logic_for_user(user_strategy=self, manual_start=True)
-            self.active = True
-            db.session.commit()
-            self.user.update_available()
+            current_app.extensions["celery"].send_task(
+                "app.tasks.execute_user_strategy", args=[self.id, True]
+            )
             return (True, "success")
         else:
             return (False, f"no money")
@@ -613,8 +631,6 @@ class UserStrategy(db.Model):
         """Deactivate a strategy and update the user's available balance."""
         self.active = False
         db.session.commit()
-        # Recalculate the user's available balance
-        self.user.update_available()
 
     def __repr__(self):
         return f"<UserStrategy user_id={self.user_id}, strategy_id={self.strategy_id}>"
