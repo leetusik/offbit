@@ -144,21 +144,21 @@ def strategy(strategy_id):
     stop_loss = session.get("stop_loss", None)
 
     if execution_time:
-        # Convert to a datetime.time object
-        # Get user's timezone from session
-        user_timezone = session.get("timezone", "UTC")
-        user_timezone = pytz.timezone(user_timezone)
+        # Get user's timezone from session and convert to pytz timezone
+        user_timezone = pytz.timezone(session.get("timezone", "UTC"))
 
-        # Create a datetime object for today with the given time
-        local_datetime = datetime.combine(datetime.today(), execution_time)
+        # Create UTC datetime from execution time
+        utc_datetime = datetime.now(timezone.utc).replace(
+            hour=execution_time.hour,
+            minute=execution_time.minute,
+            second=0,
+            microsecond=0,
+        )
+        # Convert UTC to user's local timezone
+        local_datetime = utc_datetime.astimezone(user_timezone).replace(tzinfo=None)
+        # Localize and get final execution time
+        execution_time = user_timezone.localize(local_datetime).time()
 
-        # Localize the time to the user's timezone
-        localized_time = user_timezone.localize(local_datetime)
-
-        # Convert to UTC
-        utc_time = localized_time.astimezone(pytz.utc)
-        execution_time = utc_time.time()
-        execution_time = datetime.strptime(str(execution_time), "%H:%M:%S").time()
     if param1:
         param1 = int(param1)
     if param2:
@@ -184,6 +184,15 @@ def strategy(strategy_id):
         selected_coin = sorted_coins[0].name  # Set to the first coin if not provided
     elif selected_coin not in [coin.name for coin in sorted_coins]:
         abort(404)  # Abort if the selected coin is not in the strategy's coins
+
+    df = get_backtest(
+        strategy=strategy,
+        selected_coin=selected_coin,
+        param1=param1,
+        param2=param2,
+        stop_loss=stop_loss,
+        execution_time=datetime(1970, 1, 1, utc_datetime.hour, utc_datetime.minute),
+    )
 
     # If the form is submitted and valid, pass the execution time as an argument
     if form.validate_on_submit():
@@ -220,32 +229,32 @@ def strategy(strategy_id):
             execution_time=datetime(1970, 1, 1, utc_time.hour, utc_time.minute),
         )
 
-    else:
-        execution_time = form.execution_time.data
-        param1 = form.param1.data
-        if strategy.base_param2:
-            param2 = form.param2.data
-        else:
-            param2 = None
-        stop_loss = form.stop_loss.data
+    # else:
+    #     execution_time = form.execution_time.data
+    #     param1 = form.param1.data
+    #     if strategy.base_param2:
+    #         param2 = form.param2.data
+    #     else:
+    #         param2 = None
+    #     stop_loss = form.stop_loss.data
 
-        user_timezone = session.get("timezone", "UTC")
-        user_timezone = pytz.timezone(user_timezone)
-        # Create a datetime object for today with the given time
-        local_datetime = datetime.combine(datetime.today(), execution_time)
+    #     user_timezone = session.get("timezone", "UTC")
+    #     user_timezone = pytz.timezone(user_timezone)
+    #     # Create a datetime object for today with the given time
+    #     local_datetime = datetime.combine(datetime.today(), execution_time)
 
-        # Localize the time to the given timezone
-        localized_time = user_timezone.localize(local_datetime)
-        # Convert to UTC
-        utc_time = localized_time.astimezone(pytz.utc)
-        df = get_backtest(
-            strategy=strategy,
-            selected_coin=selected_coin,
-            param1=param1,
-            param2=param2,
-            stop_loss=stop_loss,
-            execution_time=datetime(1970, 1, 1, utc_time.hour, utc_time.minute),
-        )
+    #     # Localize the time to the given timezone
+    #     localized_time = user_timezone.localize(local_datetime)
+    #     # Convert to UTC
+    #     utc_time = localized_time.astimezone(pytz.utc)
+    #     df = get_backtest(
+    #         strategy=strategy,
+    #         selected_coin=selected_coin,
+    #         param1=param1,
+    #         param2=param2,
+    #         stop_loss=stop_loss,
+    #         execution_time=datetime(1970, 1, 1, utc_time.hour, utc_time.minute),
+    #     )
 
     # Convert the time_utc column from string to datetime (assumed to be in UTC)
     df["time_utc"] = pd.to_datetime(df["time_utc"], utc=True)  # Ensure it's tz-aware
