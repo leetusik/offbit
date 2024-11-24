@@ -36,7 +36,7 @@ def calculate_strategy_performance(
             print("no pass!")
             strategy.coins[0].make_historical_data()
 
-    df = strategy.coins[0].get_historical_data()
+    df = min(strategy.coins, key=lambda x: x.id).get_historical_data()
     # Filter the data to only include rows within the specified time period
     end_time = pd.Timestamp.now(tz="UTC").to_pydatetime().replace(tzinfo=None)
     start_time = end_time - time_period
