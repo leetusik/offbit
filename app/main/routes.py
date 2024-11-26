@@ -131,11 +131,6 @@ def strategies():
 def strategy(strategy_id):
 
     strategy = db.first_or_404(sa.select(Strategy).where(Strategy.id == strategy_id))
-
-    # Retrieve the strategy object from the database
-    # execution_time = session.get("execution_time", strategy.base_execution_time)
-    # param1 = session.get("param1", strategy.base_param1)
-    # param2 = session.get("param2", strategy.base_param2)
     execution_time = (
         datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0).time()
     )

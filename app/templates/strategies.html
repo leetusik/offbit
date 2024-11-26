@@ -156,6 +156,18 @@
 {% block script %}
     <script>
     document.addEventListener('DOMContentLoaded', function () {
+        // Add timezone detection and storage at the start
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        
+        // Send the timezone to the Flask server
+        fetch('/my/set_timezone', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ timezone: timezone })
+        });
+
         // Select all elements with `id` that start with "strategy"
 
         // Initialize tooltips for all elements with `data-bs-toggle="tooltip"`
