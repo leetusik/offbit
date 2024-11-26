@@ -416,13 +416,13 @@ def calculate_strategy_performance(
         df["cumulative_returns"] = (1 + df["strategy_returns"]).cumprod()
         df["cumulative_returns2"] = (1 + df["strategy_returns2"]).cumprod()
 
-    day_ago_balance = df["cumulative_returns2"].iloc[-2]
+    day_ago_balance = df["cumulative_returns2"].iloc[-3]
 
-    month_ago_balance = df["cumulative_returns2"].iloc[-31]
+    month_ago_balance = df["cumulative_returns2"].iloc[-32]
 
-    year_ago_balance = df["cumulative_returns2"].iloc[-366]
+    year_ago_balance = df["cumulative_returns2"].iloc[-367]
 
-    last_day_balance = df["cumulative_returns2"].iloc[-1]
+    last_day_balance = df["cumulative_returns2"].iloc[-2]
 
     total_return_day = (last_day_balance - day_ago_balance) / day_ago_balance
     total_return_month = (last_day_balance - month_ago_balance) / month_ago_balance
@@ -466,17 +466,18 @@ def calculate_coin_performance(
     # Calculate the benchmark cumulative returns (buy and hold strategy)
     df["coin_returns"] = (1 + df["close"].pct_change()).cumprod()
 
-    day_ago_coin = df["coin_returns"].iloc[-2]
+    day_ago_coin = df["coin_returns"].iloc[-3]
 
-    month_ago_coin = df["coin_returns"].iloc[-31]
+    month_ago_coin = df["coin_returns"].iloc[-32]
 
-    year_ago_coin = df["coin_returns"].iloc[-366]
+    year_ago_coin = df["coin_returns"].iloc[-367]
 
-    last_day_coin = df["coin_returns"].iloc[-1]
+    last_day_coin = df["coin_returns"].iloc[-2]
 
     coin_return_day = (last_day_coin - day_ago_coin) / day_ago_coin
     coin_return_month = (last_day_coin - month_ago_coin) / month_ago_coin
     coin_return_year = (last_day_coin - year_ago_coin) / year_ago_coin
+
     return (
         round(float(coin_return_day * 100), 2),
         round(float(coin_return_month * 100), 2),
