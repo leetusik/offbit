@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 import sqlalchemy as sa
+from flask import current_app
 
 from app import db
 from app.models import Coin, Strategy
@@ -12,8 +13,14 @@ from app.utils.handle_candle import resample_df
 def calculate_strategy_performance(
     strategy: Strategy,
     time_period: timedelta,
-    execution_time: datetime = datetime(1970, 1, 1, datetime.now(timezone.utc).hour, 0),
+    execution_time: datetime | None = None,
 ) -> float:
+    # If execution_time is not provided, set it to current hour
+    if execution_time is None:
+        current_hour = datetime.now(timezone.utc).replace(
+            minute=0, second=0, microsecond=0
+        )
+        execution_time = current_hour
 
     while True:
         # Assuming formatted_now is a datetime object without seconds (formatted_now = datetime.now().replace(second=0, microsecond=0))
@@ -437,8 +444,14 @@ def calculate_strategy_performance(
 
 def calculate_coin_performance(
     coin: Coin,
-    execution_time: datetime = datetime(1970, 1, 1, datetime.now(timezone.utc).hour, 0),
+    execution_time: datetime | None = None,
 ) -> float:
+    # If execution_time is not provided, set it to current hour
+    if execution_time is None:
+        current_hour = datetime.now(timezone.utc).replace(
+            minute=0, second=0, microsecond=0
+        )
+        execution_time = current_hour
 
     while True:
         # Assuming formatted_now is a datetime object without seconds (formatted_now = datetime.now().replace(second=0, microsecond=0))
@@ -465,6 +478,7 @@ def calculate_coin_performance(
     df = resample_df(df=df, execution_time=execution_time)
     # Calculate the benchmark cumulative returns (buy and hold strategy)
     df["coin_returns"] = (1 + df["close"].pct_change()).cumprod()
+    # Log the last 5 rows of the dataframe
 
     day_ago_coin = df["coin_returns"].iloc[-3]
 
