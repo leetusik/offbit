@@ -131,12 +131,35 @@ def strategies():
 def strategy(strategy_id):
 
     strategy = db.first_or_404(sa.select(Strategy).where(Strategy.id == strategy_id))
+    # Get parameters from session if they exist, otherwise use defaults
     execution_time = (
-        datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0).time()
+        datetime.strptime(session.get("execution_time"), "%H:%M:%S").time()
+        if session.get("execution_time")
+        else datetime.now(timezone.utc)
+        .replace(minute=0, second=0, microsecond=0)
+        .time()
     )
-    param1 = strategy.base_param1
-    param2 = strategy.base_param2
-    stop_loss = session.get("stop_loss", None)
+    param1 = (
+        int(session.get("param1")) if session.get("param1") else strategy.base_param1
+    )
+    param2 = (
+        int(session.get("param2")) if session.get("param2") else strategy.base_param2
+    )
+    stop_loss = int(session.get("stop_loss")) if session.get("stop_loss") else None
+
+    # Clear session if this is a fresh page load (no query parameters)
+    if not request.args and not request.form:
+        session.pop("execution_time", None)
+        session.pop("param1", None)
+        session.pop("param2", None)
+        session.pop("stop_loss", None)
+        # Reset to default values
+        execution_time = (
+            datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0).time()
+        )
+        param1 = strategy.base_param1
+        param2 = strategy.base_param2
+        stop_loss = None
 
     if execution_time:
         # Get user's timezone from session and convert to pytz timezone
