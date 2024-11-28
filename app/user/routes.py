@@ -217,7 +217,7 @@ def set_strategy(name):
         investing_limit = form.investing_limit.data
         execution_time = form.execution_time.data
         param1 = form.param1.data
-        param2 = form.param2.data
+        param2 = form.param2.data if hasattr(form, "param2") else None
         stop_loss = form.stop_loss.data
         target_currency = form.currency.data
         target_currency = db.session.scalar(
