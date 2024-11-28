@@ -224,33 +224,6 @@ def strategy(strategy_id):
             execution_time=datetime(1970, 1, 1, utc_time.hour, utc_time.minute),
         )
 
-    # else:
-    #     execution_time = form.execution_time.data
-    #     param1 = form.param1.data
-    #     if strategy.base_param2:
-    #         param2 = form.param2.data
-    #     else:
-    #         param2 = None
-    #     stop_loss = form.stop_loss.data
-
-    #     user_timezone = session.get("timezone", "UTC")
-    #     user_timezone = pytz.timezone(user_timezone)
-    #     # Create a datetime object for today with the given time
-    #     local_datetime = datetime.combine(datetime.today(), execution_time)
-
-    #     # Localize the time to the given timezone
-    #     localized_time = user_timezone.localize(local_datetime)
-    #     # Convert to UTC
-    #     utc_time = localized_time.astimezone(pytz.utc)
-    #     df = get_backtest(
-    #         strategy=strategy,
-    #         selected_coin=selected_coin,
-    #         param1=param1,
-    #         param2=param2,
-    #         stop_loss=stop_loss,
-    #         execution_time=datetime(1970, 1, 1, utc_time.hour, utc_time.minute),
-    #     )
-
     # Convert the time_utc column from string to datetime (assumed to be in UTC)
     df["time_utc"] = pd.to_datetime(df["time_utc"], utc=True)  # Ensure it's tz-aware
 
@@ -312,6 +285,10 @@ def strategy(strategy_id):
 @bp.route("/make_strategy", methods=["GET", "POST"])
 @login_required
 def make_strategy():
+    if not current_user.admin:
+        flash("관리자만 접근할 수 있습니다.")
+        return redirect(url_for("main.index"))
+
     form = MakeStrategyForm()
     if form.validate_on_submit():
         name = form.name.data
