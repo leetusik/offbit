@@ -38,7 +38,7 @@ def index():
 
     # Calculate total active investment amount
     total_investment = (
-        db.session.query(func.sum(UserStrategy.investing_limit))
+        db.session.query(func.sum(UserStrategy._investing_limit))
         .filter(UserStrategy.active == True)
         .scalar()
         or 0
