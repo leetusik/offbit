@@ -185,7 +185,7 @@ def strategy(strategy_id):
         selected_coin=selected_coin,
         param1=param1,
         param2=param2,
-        stop_loss=stop_loss,
+        stop_loss=int(stop_loss),
         execution_time=datetime(1970, 1, 1, utc_datetime.hour, utc_datetime.minute),
     )
 

@@ -411,6 +411,7 @@ class Strategy(db.Model):
                 buy_needed: float = min(
                     krw_balance * 0.9995, user_strategy.investing_limit
                 )
+                # fix this. if the man has 100000 won, he can't buy.
                 if buy_needed < 100000:
                     raise ValueError(
                         f"{user_strategy.user.username} 현재 보유 원화({krw_balance})이 최소 주문 금액({100000})보다 적습니다."

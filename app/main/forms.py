@@ -71,7 +71,7 @@ class SetBacktestOneParamForm(FlaskForm):
         "파라미터 1", validators=[DataRequired(message="파라미터 1을 입력해 주세요.")]
     )
     stop_loss = IntegerField(
-        "손절 퍼센트", validators=[Optional()], filters=[lambda x: x or None]
+        "손절 퍼센트(%)", validators=[Optional()], filters=[lambda x: x or None]
     )
     submit = SubmitField("확인")
 
@@ -96,7 +96,7 @@ class SetBacktestTwoParamsForm(FlaskForm):
         "파라미터 2", validators=[DataRequired(message="파라미터 2를 입력해 주세요.")]
     )
     stop_loss = IntegerField(
-        "손절 퍼센트", validators=[Optional()], filters=[lambda x: x or None]
+        "손절 퍼센트(%)", validators=[Optional()], filters=[lambda x: x or None]
     )
     submit = SubmitField("확인")
 
