@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="container mt-4">
+        <h1>자주 묻는 질문</h1>
+        <div class="accordion" id="faqAccordion">
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button"
+                            type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#faq1">Q: 이 서비스는 어떤 서비스인가요?</button>
+                </h2>
+                <div id="faq1"
+                     class="accordion-collapse collapse show"
+                     data-bs-parent="#faqAccordion">
+                    <div class="accordion-body">A: 암호화폐 자동매매 전략을 테스트하고 실행할 수 있는 서비스입니다.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

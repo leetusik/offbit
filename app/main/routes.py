@@ -39,7 +39,7 @@ def index():
 
 @bp.route("/explain")
 def explain():
-    pass
+    return render_template("explain.html", title="서비스 설명")
 
 
 @bp.route("/strategies")
@@ -380,12 +380,12 @@ def remove_from_strategies(name):
 
 @bp.route("/notice")
 def notice():
-    pass
+    return render_template("notice.html", title="공지사항")
 
 
 @bp.route("/faq")
 def faq():
-    pass
+    return render_template("faq.html", title="자주 묻는 질문")
 
 
 @bp.route("/set_timezone", methods=["POST"])
