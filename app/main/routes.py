@@ -16,6 +16,7 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required
+from sqlalchemy import func
 
 from app import db
 from app.main import bp
@@ -25,15 +26,26 @@ from app.main.forms import (
     SetBacktestOneParamForm,
     SetBacktestTwoParamsForm,
 )
-from app.models import Coin, Strategy, UserStrategy
+from app.models import Coin, Strategy, User, UserStrategy
 from app.utils.performance_utils import get_backtest, get_performance
 
 
 @bp.route("/")
 @bp.route("/index")
 def index():
+    # Get total number of users
+    total_users = User.query.count()
+
+    # Calculate total active investment amount
+    total_investment = (
+        db.session.query(func.sum(UserStrategy.investing_limit))
+        .filter(UserStrategy.active == True)
+        .scalar()
+        or 0
+    )
+
     return render_template(
-        "index.html",
+        "index.html", total_users=total_users, total_investment=total_investment
     )
 
 

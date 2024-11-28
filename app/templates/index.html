@@ -5,4 +5,24 @@
     {% else %}
         <h1>Hi, {{ current_user.username }}</h1>
     {% endif %}
+    <div class="statistics-container mt-4">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Users</h5>
+                        <p class="card-text display-4">{{ total_users }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Active Investment</h5>
+                        <p class="card-text display-4">${{ "{:,.2f}".format(total_investment) }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 {% endblock %}
