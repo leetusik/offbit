@@ -31,6 +31,12 @@
         display: table-row;
         height: 80px; /* Set this to the maximum height you want */
     }
+    .col-name {
+        width: 25%;  /* Adjust as needed */
+        white-space: nowrap; /* Prevent text from wrapping */
+        overflow: hidden;    /* Hide overflow text */
+        text-overflow: ellipsis; /* Add ellipsis (...) for overflow text */
+    }
 
     </style>
 {% endblock %}
@@ -69,7 +75,7 @@
                 <tr>
                     <th scope="col" class="more-tight"></th>
                     <th scope="col">#</th>
-                    <th scope="col">이름</th>
+                    <th scope="col" class="col-name">이름</th>
                     <th scope="col" class="d-none d-md-table-cell">투자 한도 (₩)</th>
                     <th scope="col" class="d-none d-md-table-cell">투자 실행 시간</th>
                     <th scope="col"></th>
@@ -87,7 +93,7 @@
                             </form>
                         </th>
                         <td>{{ user_strategy.strategy.id }}</td>
-                        <td>
+                        <td class="col-name">
                             <div>
                                 <p class="mb-1">{{ user_strategy.strategy.name }}</p>
                                 <p class="text-muted small">매매 종목: {{ user_strategy.target_currency.name }}</p>
