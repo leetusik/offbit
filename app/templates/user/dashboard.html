@@ -10,8 +10,9 @@
         background: none;
         border: none;
         color: inherit;
-        font-size: 1em;
+        font-size: 1em; /* Adjust the size of the star if needed */
         cursor: pointer;
+        /* padding: 0; */
     }
     .more-tight {
         padding: 0;
@@ -28,34 +29,9 @@
     }
     .uniform-row {
         display: table-row;
-        height: 80px;
-    }
-    .col-name {
-        width: 25%;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        height: 80px; /* Set this to the maximum height you want */
     }
 
-    /* Ensure consistent column widths across the table */
-    table {
-        width: 100%;
-        table-layout: fixed; /* Ensures consistent column width */
-    }
-
-    th, td {
-        text-align: left;
-        padding: 8px;
-    }
-
-    /* Set specific widths for each column */
-    .col-id {
-        width: 8%;
-    }
-
-    .col-investing-limit, .col-execution-time {
-        width: 20%;
-    }
     </style>
 {% endblock %}
 {% block content %}
@@ -92,10 +68,10 @@
             <thead>
                 <tr>
                     <th scope="col" class="more-tight"></th>
-                    <th scope="col" class="col-id">#</th>
-                    <th scope="col" class="col-name">이름</th>
-                    <th scope="col" class="d-none d-md-table-cell col-investing-limit">투자 한도 (₩)</th>
-                    <th scope="col" class="d-none d-md-table-cell col-execution-time">투자 실행 시간</th>
+                    <th scope="col">#</th>
+                    <th scope="col">이름</th>
+                    <th scope="col" class="d-none d-md-table-cell">투자 한도 (₩)</th>
+                    <th scope="col" class="d-none d-md-table-cell">투자 실행 시간</th>
                     <th scope="col"></th>
                     <th scope="col"></th>
                 </tr>
@@ -110,14 +86,14 @@
                                 {{ form_e.submit(value="★", data_bs_toggle="tooltip", title="내 전략에서 제거하기") }}
                             </form>
                         </th>
-                        <td class="col-id">{{ user_strategy.strategy.id }}</td>
-                        <td class="col-name">
+                        <td>{{ user_strategy.strategy.id }}</td>
+                        <td>
                             <div>
                                 <p class="mb-1">{{ user_strategy.strategy.name }}</p>
                                 <p class="text-muted small">매매 종목: {{ user_strategy.target_currency.name }}</p>
                             </div>
                         </td>
-                        <td class="d-none d-md-table-cell col-investing-limit">
+                        <td class="d-none d-md-table-cell">
                             {% if user_strategy.investing_limit %}
                                 <span>{{ format_integer(user_strategy.investing_limit) }}</span>
                             {% else %}
@@ -125,7 +101,7 @@
                             {% endif %}
                         </td>
                         <td id="execution_time{{ user_strategy.id }}"
-                            class="d-none d-md-table-cell col-execution-time">
+                            class="d-none d-md-table-cell">
                             {% if user_strategy.execution_time %}
                                 <span>{{ user_strategy.execution_time.strftime("%H:%M") }}</span>
                             {% else %}
@@ -180,14 +156,14 @@
                                 <form action="{{ url_for("user.deactivate_user_strategy", user_strategy_id=user_strategy.id) }}"
                                       method="post"
                                       style="display:inline">
-                                    {{ form_e.hidden_tag() }}
+                                    {{ form_e.hidden_tag() }}  <!-- CSRF token for Flask-WTF forms (optional if using Flask-WTF) -->
                                     <button type="submit" class="btn btn-danger">중지</button>
                                 </form>
                             {% else %}
                                 <form action="{{ url_for("user.no_setting_no_start") }}"
                                       method="post"
                                       style="display:inline">
-                                    {{ form_e.hidden_tag() }}
+                                    {{ form_e.hidden_tag() }}  <!-- CSRF token for Flask-WTF forms (optional if using Flask-WTF) -->
                                     <button type="submit" class="btn btn-warning">시작</button>
                                 </form>
                             {% endif %}
