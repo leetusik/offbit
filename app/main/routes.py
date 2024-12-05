@@ -237,7 +237,7 @@ def strategy(strategy_id):
         if stop_loss:
             session["stop_loss"] = str(stop_loss)
 
-        session["execution_time"] = str(form.execution_time.data)
+        # session["execution_time"] = str(form.execution_time.data)
         session["param1"] = str(form.param1.data)
 
         # change execution_time to utc #
@@ -250,6 +250,10 @@ def strategy(strategy_id):
         localized_time = user_timezone.localize(local_datetime)
         # Convert to UTC
         utc_time = localized_time.astimezone(pytz.utc)
+        # print(f"{utc_time.hour}:{utc_time.minute}:{utc_time.second}")
+        session["execution_time"] = (
+            f"{utc_time.hour}:{utc_time.minute}:{utc_time.second}"
+        )
         df = get_backtest(
             strategy=strategy,
             selected_coin=selected_coin,
