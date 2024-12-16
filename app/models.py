@@ -467,10 +467,16 @@ class Strategy(db.Model):
                 for trade in trades:
                     krw_total += float(trade["funds"])
 
-                sell_price = round((krw_total + fee) / executed_volume)
+                sell_price = round((krw_total - fee) / executed_volume)
 
                 user_strategy.sell_needed = 0
                 user_strategy.holding_position = False
+                # need to hanlde fee.
+                remain = user_strategy.user.available + user_strategy.investing_limit
+                krw_remain = krw_total - fee
+                user_strategy.investing_limit = min(remain, krw_remain)
+
+                user_strategy.user.update_available()
 
             db.session.commit()
 
