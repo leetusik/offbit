@@ -409,7 +409,7 @@ class Strategy(db.Model):
             else:
                 krw_balance: float = upbit.get_balance()
                 buy_needed: float = min(
-                    krw_balance * 0.9995, user_strategy.investing_limit
+                    krw_balance * 0.9995, user_strategy.investing_limit * 0.9995
                 )
                 # fix this. if the man has 100000 won, he can't buy.
                 if buy_needed < 100000:
