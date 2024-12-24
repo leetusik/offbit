@@ -158,7 +158,7 @@ def dashboard():
                     )
                 else:
                     flash(
-                        f"{user_strategy.strategy.name} 전략이 알 수 없는 오류로 활성화에 실패했습니다."
+                        f"{user_strategy.strategy.name} 전략이 알 수 없는 오류로 활성화에 실패했습니다. status: {status}, message: {message}"
                     )
             except ValueError as e:
                 # no money
